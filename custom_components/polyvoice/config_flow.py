@@ -733,6 +733,9 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Handle advanced settings."""
         if user_input is not None:
+            # Explicitly handle boolean - unchecked checkbox may not be in user_input
+            if CONF_CONVERSATION_MEMORY not in user_input:
+                user_input[CONF_CONVERSATION_MEMORY] = False
             new_options = {**self._entry.options, **user_input}
             return self.async_create_entry(title="", data=new_options)
 
@@ -742,10 +745,10 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="advanced",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
+                    vol.Required(
                         CONF_CONVERSATION_MEMORY,
-                        default=current.get(CONF_CONVERSATION_MEMORY, DEFAULT_CONVERSATION_MEMORY),
-                    ): cv.boolean,
+                        default=current.get(CONF_CONVERSATION_MEMORY, False),
+                    ): selector.BooleanSelector(),
                     vol.Optional(
                         CONF_MEMORY_MAX_MESSAGES,
                         default=current.get(CONF_MEMORY_MAX_MESSAGES, DEFAULT_MEMORY_MAX_MESSAGES),
