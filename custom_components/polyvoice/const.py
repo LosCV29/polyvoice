@@ -134,27 +134,63 @@ CONF_THERMOSTAT_ENTITY: Final = "thermostat_entity"
 CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
 CONF_MUSIC_PLAYERS: Final = "music_players"
 CONF_DEFAULT_MUSIC_PLAYER: Final = "default_music_player"
+CONF_LAST_ACTIVE_SPEAKER: Final = "last_active_speaker"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_NOTIFICATION_SERVICE: Final = "notification_service"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
 
-# Default camera friendly names mapping (camera_key -> display_name)
-# Users can configure their own cameras via CONF_CAMERA_ENTITIES
-DEFAULT_CAMERA_FRIENDLY_NAMES: Final = {
-    "driveway": "Driveway",
+# Default camera friendly names mapping (voice aliases -> display_name)
+# Supports multiple spellings/variations for voice commands
+# Users configure actual cameras via CONF_CAMERA_ENTITIES; ha_video_vision handles resolution
+CAMERA_FRIENDLY_NAMES: Final = {
+    # Porch / Front Door
     "porch": "Front Porch",
-    "front_door": "Front Door",
+    "front_porch": "Front Porch",
+    "front porch": "Front Porch",
+    "front door": "Front Door",
+    "frontdoor": "Front Door",
+    "door": "Front Door",
+    "doorbell": "Front Door",
+    # Backyard / Garden
     "backyard": "Backyard",
-    "garage": "Garage",
-    "side_yard": "Side Yard",
+    "back yard": "Backyard",
     "garden": "Garden",
+    "back": "Backyard",
+    # Driveway
+    "driveway": "Driveway",
+    "drive way": "Driveway",
+    "drive": "Driveway",
+    # Garage
+    "garage": "Garage",
+    # Side yard
+    "side": "Side Yard",
+    "side yard": "Side Yard",
+    "side_yard": "Side Yard",
+    # Interior
+    "kitchen": "Kitchen",
+    "living room": "Living Room",
+    "livingroom": "Living Room",
+    "living": "Living Room",
+    "sala": "Living Room",
+    "nursery": "Nursery",
+    "baby": "Nursery",
+    "bedroom": "Bedroom",
+    "office": "Office",
+    "basement": "Basement",
+    "attic": "Attic",
+    # Outdoor extras
+    "pool": "Pool",
+    "patio": "Patio",
+    "deck": "Deck",
+    "front yard": "Front Yard",
     "front_yard": "Front Yard",
 }
 
 DEFAULT_THERMOSTAT_ENTITY: Final = ""
 DEFAULT_CALENDAR_ENTITIES: Final = ""
-DEFAULT_MUSIC_PLAYERS: Final = ""
+DEFAULT_MUSIC_PLAYERS: Final = []  # List of media_player entity_ids
 DEFAULT_DEFAULT_MUSIC_PLAYER: Final = ""
+DEFAULT_LAST_ACTIVE_SPEAKER: Final = ""  # input_text helper entity_id
 DEFAULT_DEVICE_ALIASES: Final = ""
 DEFAULT_NOTIFICATION_SERVICE: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
@@ -224,7 +260,7 @@ When using tools, respond DIRECTLY with the result. Do NOT say "I'll look this u
 GENERAL GUIDELINES:
 - For weather questions, call get_weather_forecast
 - For music control, use control_music with appropriate action
-- For camera checks, use check_camera for a specific camera or check_all_cameras for all
+- For camera checks: use check_camera for detailed view, quick_camera_check for fast "is anyone there" queries
 - For thermostat control, use control_thermostat
 - For device status, use check_device_status
 - For sports questions, ALWAYS call get_sports_info (never answer from memory)

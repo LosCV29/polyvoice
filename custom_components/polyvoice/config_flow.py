@@ -72,6 +72,7 @@ from .const import (
     CONF_CALENDAR_ENTITIES,
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
+    CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
@@ -106,6 +107,7 @@ from .const import (
     DEFAULT_CALENDAR_ENTITIES,
     DEFAULT_MUSIC_PLAYERS,
     DEFAULT_DEFAULT_MUSIC_PLAYER,
+    DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_NOTIFICATION_SERVICE,
     DEFAULT_CAMERA_ENTITIES,
@@ -505,9 +507,17 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_DEFAULT_MUSIC_PLAYER in user_input:
                 processed_input[CONF_DEFAULT_MUSIC_PLAYER] = user_input[CONF_DEFAULT_MUSIC_PLAYER]
 
-            # Handle music players by room - keep as text for now
+            # Handle music players - list of media_player entities
             if CONF_MUSIC_PLAYERS in user_input:
-                processed_input[CONF_MUSIC_PLAYERS] = user_input[CONF_MUSIC_PLAYERS]
+                players_list = user_input[CONF_MUSIC_PLAYERS]
+                if isinstance(players_list, list):
+                    processed_input[CONF_MUSIC_PLAYERS] = players_list
+                else:
+                    processed_input[CONF_MUSIC_PLAYERS] = [players_list] if players_list else []
+
+            # Handle last active speaker helper
+            if CONF_LAST_ACTIVE_SPEAKER in user_input:
+                processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
 
             # Handle notification service
             if CONF_NOTIFICATION_SERVICE in user_input:
@@ -531,6 +541,19 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             current_cameras = [c.strip() for c in current_cameras.split("\n") if c.strip()]
         elif not current_cameras:
             current_cameras = []
+
+        # Parse current music players (now a list)
+        current_music_players = current.get(CONF_MUSIC_PLAYERS, DEFAULT_MUSIC_PLAYERS)
+        if isinstance(current_music_players, str) and current_music_players:
+            # Migrate old format: parse "room:entity_id" lines to just entity_ids
+            current_music_players = []
+            for line in current.get(CONF_MUSIC_PLAYERS, "").split("\n"):
+                if ":" in line:
+                    current_music_players.append(line.split(":", 1)[1].strip())
+                elif line.strip().startswith("media_player."):
+                    current_music_players.append(line.strip())
+        elif not current_music_players:
+            current_music_players = []
 
         return self.async_show_form(
             step_id="entities",
@@ -574,11 +597,20 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Optional(
                         CONF_MUSIC_PLAYERS,
-                        default=current.get(CONF_MUSIC_PLAYERS, DEFAULT_MUSIC_PLAYERS),
-                        description={"suggested_value": current.get(CONF_MUSIC_PLAYERS, DEFAULT_MUSIC_PLAYERS)},
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            multiline=True,
+                        default=current_music_players,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="media_player",
+                            multiple=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_LAST_ACTIVE_SPEAKER,
+                        default=current.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="input_text",
+                            multiple=False,
                         )
                     ),
                     vol.Optional(
@@ -591,9 +623,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 }
             ),
-            description_placeholders={
-                "music_format": "Format: room:entity_id (e.g., living room:media_player.speaker)",
-            },
         )
 
     async def async_step_api_keys(

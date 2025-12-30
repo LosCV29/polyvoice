@@ -79,6 +79,7 @@ from .const import (
     CONF_CALENDAR_ENTITIES,
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
+    CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
@@ -104,7 +105,7 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     DEFAULT_CONVERSATION_MEMORY,
     DEFAULT_MEMORY_MAX_MESSAGES,
-    DEFAULT_CAMERA_FRIENDLY_NAMES,
+    CAMERA_FRIENDLY_NAMES,
     ALL_NATIVE_INTENTS,
 )
 
@@ -140,36 +141,7 @@ ALLOWED_SERVICE_DOMAINS = {
 # API timeout in seconds for external calls
 API_TIMEOUT = 15
 
-# Camera friendly names mapping (for display purposes)
-CAMERA_FRIENDLY_NAMES = {
-    "porch": "Front Porch",
-    "front_porch": "Front Porch",
-    "front porch": "Front Porch",
-    "front door": "Front Door",
-    "frontdoor": "Front Door",
-    "backyard": "Backyard",
-    "back yard": "Backyard",
-    "garden": "Backyard",
-    "driveway": "Driveway",
-    "drive way": "Driveway",
-    "garage": "Garage",
-    "side": "Side Yard",
-    "side yard": "Side Yard",
-    "kitchen": "Kitchen",
-    "living room": "Living Room",
-    "livingroom": "Living Room",
-    "nursery": "Nursery",
-    "baby": "Nursery",
-    "bedroom": "Bedroom",
-    "office": "Office",
-    "basement": "Basement",
-    "attic": "Attic",
-    "pool": "Pool",
-    "patio": "Patio",
-    "deck": "Deck",
-}
-
-
+# CAMERA_FRIENDLY_NAMES is now imported from const.py
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -558,7 +530,23 @@ class LMStudioConversationEntity(ConversationEntity):
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
         self.default_music_player = config.get(CONF_DEFAULT_MUSIC_PLAYER, "")
-        self.music_players = parse_entity_config(config.get(CONF_MUSIC_PLAYERS, ""))
+
+        # Music players - now a simple list of entity_ids
+        music_players_config = config.get(CONF_MUSIC_PLAYERS, [])
+        if isinstance(music_players_config, list):
+            self.music_players = music_players_config
+        elif isinstance(music_players_config, str) and music_players_config:
+            # Migrate old format: parse "room:entity_id" lines to just entity_ids
+            self.music_players = []
+            for line in music_players_config.split("\n"):
+                if ":" in line:
+                    self.music_players.append(line.split(":", 1)[1].strip())
+                elif line.strip().startswith("media_player."):
+                    self.music_players.append(line.strip())
+        else:
+            self.music_players = []
+
+        self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, "")
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
@@ -846,67 +834,44 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
         
-        # ===== CAMERA CHECKS (if enabled and cameras configured) =====
-        if self.enable_cameras and self.camera_friendly_names:
-            # Build list of available cameras for tool descriptions
-            camera_list = ", ".join(self.camera_friendly_names.values())
-            camera_keys = ", ".join([f"'{k}'" for k in self.camera_friendly_names.keys()])
-
-            # Check all cameras at once
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "check_all_cameras",
-                    "description": f"Check ALL cameras at once using AI vision + facial recognition. Available cameras: {camera_list}. Use for: 'check the cameras', 'is anyone outside', 'check outside', 'what's happening outside', 'check all cameras'.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-
-            # Check a specific camera
+        # ===== CAMERA CHECKS (if enabled) =====
+        # Uses ha_video_vision integration for AI analysis
+        if self.enable_cameras:
+            # Detailed camera check - full description + person identification
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": f"Check a specific camera using AI vision + facial recognition. Available cameras: {camera_list}. Use for: 'check the porch', 'who's at the door', 'what's in the backyard', 'check the driveway'.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "camera": {
-                                "type": "string",
-                                "description": f"The camera to check. Available options: {camera_keys}",
-                                "enum": list(self.camera_friendly_names.keys())
-                            },
-                            "query": {
-                                "type": "string",
-                                "description": "Optional specific question about what to look for on the camera (e.g., 'is there a package?', 'is anyone there?')"
-                            }
-                        },
-                        "required": ["camera"]
-                    }
-                }
-            })
-
-            # Flexible camera tool - works with any camera location via ha_video_vision
-            # Supports voice patterns: "check the X camera" and "is there anyone in X"
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "analyze_camera",
-                    "description": "Check ANY camera by location name using AI vision + facial recognition. Use this tool for requests like: 'check the [location] camera', 'is there anyone in [location]', 'is there anyone in the [location]', 'who is in the [location]', 'what's happening in [location]', 'show me the [location]'. Works with any camera location such as garage, kitchen, nursery, office, bedroom, living room, basement, pool, patio, side yard, etc. Always extract the location name from the user's request.",
+                    "description": "Check a camera with detailed AI vision analysis + facial recognition. Returns full scene description and identifies people. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me the [location]', 'who's at the [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "location": {
                                 "type": "string",
-                                "description": "The camera location to check. Extract this from phrases like 'check the X camera' or 'is there anyone in X'. Examples: 'garage', 'kitchen', 'nursery', 'living room', 'bedroom', 'office', 'pool', 'patio', 'side yard', 'front yard'"
+                                "description": "The camera location to check. Examples: 'garage', 'kitchen', 'nursery', 'living room', 'driveway', 'porch', 'backyard', 'front door', 'doorbell'"
                             },
                             "query": {
                                 "type": "string",
                                 "description": "Optional specific question about what to look for (e.g., 'is the baby sleeping', 'is there a package', 'is the car there')"
+                            }
+                        },
+                        "required": ["location"]
+                    }
+                }
+            })
+
+            # Quick presence check - fast response, just person detection
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "quick_camera_check",
+                    "description": "FAST camera check - quickly confirms if anyone is present + one sentence description. Use for: 'is there anyone in [location]', 'is someone at the [location]', 'anyone in the [location]?'. Returns quick yes/no with brief description.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The camera location to check. Examples: 'garage', 'kitchen', 'driveway', 'porch', 'backyard', 'front door'"
                             }
                         },
                         "required": ["location"]
@@ -2864,23 +2829,49 @@ class LMStudioConversationEntity(ConversationEntity):
             action = arguments.get("action", "").lower()
             query = arguments.get("query", "")
             media_type = arguments.get("media_type", "artist")
-            room = arguments.get("room", "living room").lower()
+            room = arguments.get("room", "").lower()
             shuffle = arguments.get("shuffle", False)
-            
-            # Use global music player constants
-            all_players = list(MUSIC_PLAYERS.values())
-            
+
+            # Use configured music players list
+            all_players = self.music_players if self.music_players else []
+
+            if not all_players and not self.default_music_player:
+                return {"error": "No music players configured. Add them in Settings → PolyVoice → Entity Configuration."}
+
+            # Helper to find player by room name (matches entity_id containing room)
+            def find_player_by_room(room_name: str) -> str | None:
+                room_normalized = room_name.replace(" ", "_").lower()
+                for player in all_players:
+                    player_lower = player.lower()
+                    if room_normalized in player_lower or room_name.replace(" ", "") in player_lower:
+                        return player
+                return None
+
+            # Helper to extract room name from entity_id
+            def get_room_from_player(player: str) -> str:
+                # media_player.living_room_speaker -> "living room"
+                name = player.replace("media_player.", "").replace("_speaker", "").replace("_", " ")
+                return name.title()
+
             try:
-                _LOGGER.info("Music control: action=%s, query=%s, media_type=%s, room=%s, shuffle=%s", 
+                _LOGGER.info("Music control: action=%s, query=%s, media_type=%s, room=%s, shuffle=%s",
                             action, query, media_type, room, shuffle)
-                
+
                 # Determine target player(s)
                 if room == "everywhere":
-                    target_players = all_players
-                elif room in MUSIC_PLAYERS:
-                    target_players = [MUSIC_PLAYERS[room]]
+                    target_players = all_players if all_players else [self.default_music_player]
+                elif room:
+                    matched_player = find_player_by_room(room)
+                    if matched_player:
+                        target_players = [matched_player]
+                    else:
+                        target_players = [self.default_music_player] if self.default_music_player else all_players[:1]
                 else:
-                    target_players = [DEFAULT_MUSIC_PLAYER]
+                    # No room specified - use default or first available
+                    target_players = [self.default_music_player] if self.default_music_player else all_players[:1]
+
+                if not target_players or not target_players[0]:
+                    return {"error": "No music player available"}
                 
                 if action == "play":
                     if not query:
@@ -2924,10 +2915,10 @@ class LMStudioConversationEntity(ConversationEntity):
                         _LOGGER.info("Playing '%s' on %s (shuffle=%s)", query, player, shuffle)
                     
                     # Update last active player
-                    if self.hass.states.get(LAST_ACTIVE_PLAYER_HELPER):
+                    if self.last_active_speaker and self.hass.states.get(self.last_active_speaker):
                         await self.hass.services.async_call(
                             "input_text", "set_value",
-                            {"entity_id": LAST_ACTIVE_PLAYER_HELPER, "value": target_players[0]},
+                            {"entity_id": self.last_active_speaker, "value": target_players[0]},
                             blocking=True
                         )
                     
@@ -2947,32 +2938,29 @@ class LMStudioConversationEntity(ConversationEntity):
                 
                 elif action == "resume":
                     # If no room specified, try to resume last active player
-                    if room == "living room":  # Default means no specific room requested
-                        last_active_state = self.hass.states.get(LAST_ACTIVE_PLAYER_HELPER)
-                        if last_active_state and last_active_state.state not in ("unknown", "unavailable", ""):
-                            target_players = [last_active_state.state]
-                            _LOGGER.info("Resuming last active player: %s", target_players[0])
-                        else:
+                    if not room:
+                        if self.last_active_speaker:
+                            last_active_state = self.hass.states.get(self.last_active_speaker)
+                            if last_active_state and last_active_state.state not in ("unknown", "unavailable", ""):
+                                target_players = [last_active_state.state]
+                                _LOGGER.info("Resuming last active player: %s", target_players[0])
+                        if not target_players or not target_players[0]:
                             # Find any paused player
                             for player in all_players:
                                 state = self.hass.states.get(player)
                                 if state and state.state == "paused":
                                     target_players = [player]
                                     break
-                    
+
                     for player in target_players:
                         await self.hass.services.async_call(
                             "media_player", "media_play",
                             {"entity_id": player},
                             blocking=True
                         )
-                    
+
                     # Find room name for response
-                    resumed_room = "the last active speaker"
-                    for rname, pid in MUSIC_PLAYERS.items():
-                        if pid == target_players[0]:
-                            resumed_room = f"the {rname}"
-                            break
+                    resumed_room = get_room_from_player(target_players[0]) if target_players else "speaker"
                     return {"status": "resumed", "message": f"Music resumed in {resumed_room}"}
                 
                 elif action == "stop":
@@ -3034,14 +3022,10 @@ class LMStudioConversationEntity(ConversationEntity):
                             title = attrs.get("media_title", "Unknown")
                             artist = attrs.get("media_artist", "Unknown")
                             album = attrs.get("media_album_name", "")
-                            
-                            # Find room name
-                            room_name = "unknown room"
-                            for rname, pid in MUSIC_PLAYERS.items():
-                                if pid == player:
-                                    room_name = rname
-                                    break
-                            
+
+                            # Get room name from entity_id
+                            room_name = get_room_from_player(player)
+
                             result = {
                                 "title": title,
                                 "artist": artist,
@@ -3050,7 +3034,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             if album:
                                 result["album"] = album
                             return result
-                    
+
                     return {"message": "No music is currently playing"}
                 
                 elif action == "transfer":
@@ -3061,29 +3045,29 @@ class LMStudioConversationEntity(ConversationEntity):
                         if state and state.state in ("playing", "paused"):
                             source_player = player
                             break
-                    
+
                     if not source_player:
                         return {"error": "No music is currently playing to transfer"}
-                    
+
                     # Transfer to target room
                     target_player = target_players[0]
-                    
+
                     await self.hass.services.async_call(
                         "music_assistant", "transfer_queue",
                         target={"entity_id": target_player},
                         blocking=True
                     )
-                    
+
                     # Update last active player
-                    if self.hass.states.get(LAST_ACTIVE_PLAYER_HELPER):
+                    if self.last_active_speaker and self.hass.states.get(self.last_active_speaker):
                         await self.hass.services.async_call(
                             "input_text", "set_value",
-                            {"entity_id": LAST_ACTIVE_PLAYER_HELPER, "value": target_player},
+                            {"entity_id": self.last_active_speaker, "value": target_player},
                             blocking=True
                         )
-                    
-                    room_text = room if room != "living room" else "living room"
-                    return {"status": "transferred", "message": f"Music transferred to the {room_text}"}
+
+                    room_text = get_room_from_player(target_player) if room else "the speaker"
+                    return {"status": "transferred", "message": f"Music transferred to {room_text}"}
                 
                 else:
                     return {"error": f"Unknown action: {action}"}
@@ -3095,137 +3079,8 @@ class LMStudioConversationEntity(ConversationEntity):
         # =========================================================================
         # CAMERA CHECK HANDLERS (via ha_video_vision integration)
         # =========================================================================
-        elif tool_name == "check_all_cameras":
-            # Check all configured cameras at once via ha_video_vision integration
-            if not self.camera_friendly_names:
-                return {"error": "No cameras configured. Add cameras in Settings → PolyVoice → Entity Configuration."}
-
-            cameras = list(self.camera_friendly_names.keys())
-            results = []
-            all_people = []
-            successful_checks = 0
-            failed_checks = 0
-
-            for cam in cameras:
-                friendly_name = self.camera_friendly_names.get(cam, cam)
-                try:
-                    # Call ha_video_vision integration service
-                    result = await self.hass.services.async_call(
-                        "ha_video_vision",
-                        "analyze_camera",
-                        {"camera": cam, "duration": 3},
-                        blocking=True,
-                        return_response=True,
-                    )
-
-                    if result and result.get("success"):
-                        successful_checks += 1
-                        analysis = result.get('description', 'No activity detected')
-                        identified = result.get("identified_people", [])
-
-                        if identified:
-                            people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
-                            results.append(f"**{friendly_name}** (person detected: {people_str}): {analysis}")
-                            for person in identified:
-                                if person not in all_people:
-                                    all_people.append(person)
-                        else:
-                            results.append(f"**{friendly_name}**: {analysis}")
-                    else:
-                        failed_checks += 1
-                        error_msg = result.get('error', 'Connection failed') if result else 'Service unavailable'
-                        results.append(f"**{friendly_name}**: Unable to check - {error_msg}")
-                except Exception as e:
-                    failed_checks += 1
-                    results.append(f"**{friendly_name}**: Error accessing camera feed")
-                    _LOGGER.error("Error checking %s: %s", cam, e)
-
-            # Build summary with status header
-            status_line = f"Checked {successful_checks}/{len(cameras)} cameras successfully."
-            if failed_checks > 0:
-                status_line += f" ({failed_checks} unavailable)"
-
-            camera_details = "\n".join(results)
-
-            if all_people:
-                people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in all_people])
-                summary = f"{status_line}\n\n**People recognized across cameras**: {people_str}\n\n{camera_details}"
-            else:
-                summary = f"{status_line}\n\n{camera_details}"
-
-            return {"summary": summary, "cameras_checked": cameras, "successful": successful_checks, "failed": failed_checks, "people_found": all_people}
-
         elif tool_name == "check_camera":
-            # Check a specific camera via ha_video_vision integration
-            camera_key = arguments.get("camera", "")
-            user_camera_query = arguments.get("query", "")
-
-            if not camera_key:
-                return {"error": "No camera specified. Please provide a camera name."}
-
-            if not self.camera_friendly_names:
-                return {"error": "No cameras configured. Add cameras in Settings → PolyVoice → Entity Configuration."}
-
-            # Validate camera exists in configured cameras
-            if camera_key not in self.camera_friendly_names:
-                available = ", ".join(self.camera_friendly_names.keys())
-                return {"error": f"Camera '{camera_key}' not found. Available cameras: {available}"}
-
-            friendly_name = self.camera_friendly_names.get(camera_key, camera_key)
-
-            try:
-                # Call ha_video_vision integration service
-                service_data = {"camera": camera_key, "duration": 3}
-                if user_camera_query:
-                    service_data["user_query"] = user_camera_query
-
-                result = await self.hass.services.async_call(
-                    "ha_video_vision",
-                    "analyze_camera",
-                    service_data,
-                    blocking=True,
-                    return_response=True,
-                )
-
-                if not result or not result.get("success"):
-                    error_msg = result.get('error', 'Unknown error') if result else 'Service unavailable'
-                    return {
-                        "location": friendly_name,
-                        "status": "unavailable",
-                        "error": f"Could not access {friendly_name} camera: {error_msg}"
-                    }
-
-                # Build response with identification
-                identified = result.get("identified_people", [])
-                analysis = result.get("description", "Unable to analyze camera feed")
-
-                if identified:
-                    people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
-                    return {
-                        "location": friendly_name,
-                        "status": "checked",
-                        "person_detected": True,
-                        "identified": people_str,
-                        "description": analysis
-                    }
-                else:
-                    return {
-                        "location": friendly_name,
-                        "status": "checked",
-                        "person_detected": False,
-                        "description": analysis
-                    }
-
-            except Exception as err:
-                _LOGGER.error("Error checking camera %s: %s", camera_key, err, exc_info=True)
-                return {
-                    "location": friendly_name,
-                    "status": "error",
-                    "error": f"Failed to check {friendly_name} camera: {str(err)}"
-                }
-
-        elif tool_name == "analyze_camera":
-            # Flexible camera analysis - works with any camera location
+            # Detailed camera check - full description + person identification
             location = arguments.get("location", "").lower().strip()
             query = arguments.get("query", "")
 
@@ -3261,35 +3116,87 @@ class LMStudioConversationEntity(ConversationEntity):
                         "error": f"Could not access {friendly_name} camera: {error_msg}"
                     }
 
-                # Build response with identification
+                # Build response with full details
                 identified = result.get("identified_people", [])
                 analysis = result.get("description", "Unable to analyze camera feed")
                 person_detected = result.get("person_detected", False)
 
+                response = {
+                    "location": friendly_name,
+                    "status": "checked",
+                    "person_detected": person_detected or bool(identified),
+                    "description": analysis
+                }
+
                 if identified:
                     people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
-                    return {
-                        "location": friendly_name,
-                        "status": "checked",
-                        "person_detected": True,
-                        "identified": people_str,
-                        "description": analysis
-                    }
-                else:
-                    return {
-                        "location": friendly_name,
-                        "status": "checked",
-                        "person_detected": person_detected,
-                        "description": analysis
-                    }
+                    response["identified"] = people_str
+
+                return response
 
             except Exception as err:
-                _LOGGER.error("Error analyzing camera %s: %s", location, err, exc_info=True)
+                _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
                 return {
                     "location": friendly_name,
                     "status": "error",
                     "error": f"Failed to check {friendly_name} camera: {str(err)}"
                 }
+
+        elif tool_name == "quick_camera_check":
+            # Fast presence check - just person detection + one sentence
+            location = arguments.get("location", "").lower().strip()
+
+            if not location:
+                return {"error": "No camera location specified"}
+
+            # Get friendly name for display
+            friendly_name = CAMERA_FRIENDLY_NAMES.get(location, location.replace("_", " ").title())
+
+            try:
+                # Call ha_video_vision with quick mode (shorter duration)
+                result = await self.hass.services.async_call(
+                    "ha_video_vision",
+                    "analyze_camera",
+                    {"camera": location, "duration": 2},
+                    blocking=True,
+                    return_response=True,
+                )
+
+                if not result or not result.get("success"):
+                    return {"location": friendly_name, "error": "Camera unavailable"}
+
+                identified = result.get("identified_people", [])
+                person_detected = result.get("person_detected", False) or bool(identified)
+                analysis = result.get("description", "")
+
+                # Extract just first sentence for quick response
+                brief = analysis.split('.')[0] + '.' if analysis else "No activity."
+
+                if identified:
+                    names = ", ".join([p['name'] for p in identified])
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": True,
+                        "who": names,
+                        "brief": brief
+                    }
+                elif person_detected:
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": True,
+                        "who": "Unknown person",
+                        "brief": brief
+                    }
+                else:
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": False,
+                        "brief": brief
+                    }
+
+            except Exception as err:
+                _LOGGER.error("Error quick-checking camera %s: %s", location, err)
+                return {"location": friendly_name, "error": "Check failed"}
 
         elif tool_name == "get_restaurant_recommendations":
             query = arguments.get("query", "")
