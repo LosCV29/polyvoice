@@ -220,8 +220,6 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    # Music intents (pause/resume/skip) now handled by native HA intents
-    # Only play/shuffle/transfer go to LLM via control_music tool
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
@@ -261,7 +259,6 @@ When using tools, respond DIRECTLY with the result. Do NOT say "I'll look this u
 
 GENERAL GUIDELINES:
 - For weather questions, call get_weather_forecast
-- For music control, use control_music with appropriate action
 - For camera checks: use check_camera for detailed view, quick_camera_check for fast "is anyone there" queries
 - For thermostat control, use control_thermostat
 - For device status, use check_device_status
