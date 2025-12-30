@@ -135,12 +135,25 @@ CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
 CONF_MUSIC_PLAYERS: Final = "music_players"
 CONF_DEFAULT_MUSIC_PLAYER: Final = "default_music_player"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
+CONF_NOTIFICATION_SERVICE: Final = "notification_service"
+CONF_CAMERA_ENTITIES: Final = "camera_entities"
 
 DEFAULT_THERMOSTAT_ENTITY: Final = ""
 DEFAULT_CALENDAR_ENTITIES: Final = ""
 DEFAULT_MUSIC_PLAYERS: Final = ""
 DEFAULT_DEFAULT_MUSIC_PLAYER: Final = ""
 DEFAULT_DEVICE_ALIASES: Final = ""
+DEFAULT_NOTIFICATION_SERVICE: Final = ""
+DEFAULT_CAMERA_ENTITIES: Final = ""
+
+# =============================================================================
+# CONVERSATION SETTINGS
+# =============================================================================
+CONF_CONVERSATION_MEMORY: Final = "conversation_memory"
+CONF_MEMORY_MAX_MESSAGES: Final = "memory_max_messages"
+
+DEFAULT_CONVERSATION_MEMORY: Final = False  # Stateless by default
+DEFAULT_MEMORY_MAX_MESSAGES: Final = 10
 
 # =============================================================================
 # NATIVE INTENTS

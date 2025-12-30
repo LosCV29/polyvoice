@@ -11,7 +11,6 @@ from math import radians, cos, sin, asin, sqrt
 from typing import Any, Literal
 
 import aiohttp
-import pytz
 import voluptuous as vol
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 
@@ -81,6 +80,11 @@ from .const import (
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
     CONF_DEVICE_ALIASES,
+    CONF_NOTIFICATION_SERVICE,
+    CONF_CAMERA_ENTITIES,
+    # Conversation settings
+    CONF_CONVERSATION_MEMORY,
+    CONF_MEMORY_MAX_MESSAGES,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_CUSTOM_EXCLUDED_INTENTS,
@@ -98,6 +102,8 @@ from .const import (
     DEFAULT_ENABLE_THERMOSTAT,
     DEFAULT_ENABLE_DEVICE_STATUS,
     DEFAULT_ENABLE_WIKIPEDIA,
+    DEFAULT_CONVERSATION_MEMORY,
+    DEFAULT_MEMORY_MAX_MESSAGES,
     ALL_NATIVE_INTENTS,
 )
 
@@ -107,27 +113,9 @@ _LOGGER = logging.getLogger(__name__)
 # CONFIGURATION CONSTANTS - Now loaded from config, with fallback defaults
 # =============================================================================
 
-# Timezone for date/time operations
-DEFAULT_TIMEZONE = "America/New_York"
-TIMEZONE = pytz.timezone(DEFAULT_TIMEZONE)
-
 # Default location (used when custom location not set and HA location unavailable)
 DEFAULT_LATITUDE = 0.0
 DEFAULT_LONGITUDE = 0.0
-
-# Camera friendly names (for tool responses)
-# Maps various ways users might refer to cameras
-CAMERA_FRIENDLY_NAMES = {
-    "porch": "Front Porch",
-    "doorbell": "Front Porch",
-    "front door": "Front Porch",
-    "backyard": "Backyard",
-    "garden": "Backyard",
-    "driveway": "Driveway",
-    "kitchen": "Kitchen",
-    "living room": "Living Room",
-    "sala": "Living Room",
-}
 
 
 # SPEED OPTIMIZATION PATTERNS
@@ -215,24 +203,54 @@ def calculate_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float)
     return 3956 * c  # Earth's radius in miles
 
 
-def format_human_readable_state(entity_id: str, state: str) -> str:
-    """Convert entity state to human-readable format."""
-    domain = entity_id.split(".")[0]
-    
-    if domain == "binary_sensor":
-        if "door" in entity_id or "gate" in entity_id or "mailbox" in entity_id:
-            return "OPEN" if state == "on" else "CLOSED"
-        return "detected" if state == "on" else "clear"
-    elif domain == "lock":
-        return "LOCKED" if state == "locked" else "UNLOCKED"
-    elif domain == "cover":
-        return state.upper()
-    elif domain in ("light", "switch", "fan"):
-        return "ON" if state == "on" else "OFF"
-    elif domain == "vacuum":
-        return state.upper()
-    else:
-        return state.upper()
+async def fetch_wikidata_birthdate(session: aiohttp.ClientSession, wikibase_item: str) -> dict | None:
+    """
+    Fetch birthdate from Wikidata for a given Wikibase item ID.
+    Returns dict with 'birthdate' and 'age' or None if not found.
+    """
+    try:
+        headers = {"User-Agent": "HomeAssistant-PolyVoice/1.0"}
+        wikidata_url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikibase_item}.json"
+
+        async with session.get(wikidata_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            if resp.status != 200:
+                return None
+            wd_data = await resp.json()
+
+        entity = wd_data.get("entities", {}).get(wikibase_item, {})
+        claims = entity.get("claims", {})
+
+        # P569 is birth date property in Wikidata
+        if "P569" not in claims:
+            return None
+
+        birth_claim = claims["P569"][0]
+        time_value = birth_claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("time", "")
+
+        if not time_value:
+            return None
+
+        # Parse Wikidata date format: +YYYY-MM-DDTHH:MM:SSZ
+        match = re.match(r'\+(\d{4})-(\d{2})-(\d{2})', time_value)
+        if not match:
+            return None
+
+        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        birthdate = datetime(year, month, day)
+
+        today = datetime.now()
+        age = today.year - birthdate.year
+        if (today.month, today.day) < (birthdate.month, birthdate.day):
+            age -= 1
+
+        return {
+            "birthdate": birthdate,
+            "birthdate_formatted": birthdate.strftime("%B %d, %Y"),
+            "age": age,
+        }
+    except Exception as e:
+        _LOGGER.warning("Wikidata fetch error: %s", e)
+        return None
 
 
 def find_entity_by_name(hass: HomeAssistant, query: str, device_aliases: dict) -> tuple[str | None, str | None]:
@@ -328,21 +346,25 @@ async def async_setup_entry(
                         title = f"🏠 {', '.join(names)} at {camera}"
                     else:
                         title = f"📷 Person at {camera}"
-                    
-                    # Send notification - try mobile app first
-                    try:
-                        await hass.services.async_call(
-                            "notify", "mobile_app_carlos_phone",
-                            {
-                                "title": title,
-                                "message": result["analysis"],
-                                "data": {
-                                    "image": f"/api/camera_proxy/camera.{camera}_camera"
+
+                    # Send notification using configured service
+                    notification_service = getattr(stored_agent, 'notification_service', '')
+                    if notification_service:
+                        try:
+                            await hass.services.async_call(
+                                "notify", notification_service,
+                                {
+                                    "title": title,
+                                    "message": result["analysis"],
+                                    "data": {
+                                        "image": f"/api/camera_proxy/camera.{camera}_camera"
+                                    }
                                 }
-                            }
-                        )
-                    except Exception as e:
-                        _LOGGER.warning("Could not send notification: %s", e)
+                            )
+                        except Exception as e:
+                            _LOGGER.warning("Could not send notification: %s", e)
+                    else:
+                        _LOGGER.debug("No notification service configured")
                 
                 # Fire event for other automations
                 hass.bus.async_fire("lm_studio_facial_recognition", {
@@ -383,18 +405,21 @@ class LMStudioConversationEntity(ConversationEntity):
         self.entry = config_entry
         self._attr_unique_id = config_entry.entry_id
         self._session = None  # Shared aiohttp session - set in async_added_to_hass
-        
+
         # Usage tracking for HA dashboard sensors
         self._api_calls = {
             "weather": 0, "places": 0, "restaurants": 0, "news": 0,
             "sports": 0, "wikipedia": 0, "llm": 0,
         }
         self._tokens_used = {"input": 0, "output": 0}
-        
+
         # Tools cache (built once, reused for all requests)
         self._tools = None
-        
-        # STATELESS MODE: No conversation history - every request is fresh
+
+        # Conversation memory storage (keyed by conversation_id)
+        self._conversation_history: dict[str, list[dict]] = {}
+
+        # Initialize config
         self._update_from_config({**config_entry.data, **config_entry.options})
 
     def _update_from_config(self, config: dict[str, Any]) -> None:
@@ -500,10 +525,16 @@ class LMStudioConversationEntity(ConversationEntity):
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
+        self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
         self.default_music_player = config.get(CONF_DEFAULT_MUSIC_PLAYER, "")
         self.music_players = parse_entity_config(config.get(CONF_MUSIC_PLAYERS, ""))
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
-        
+        self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
+
+        # Conversation memory settings
+        self.conversation_memory_enabled = config.get(CONF_CONVERSATION_MEMORY, DEFAULT_CONVERSATION_MEMORY)
+        self.memory_max_messages = config.get(CONF_MEMORY_MAX_MESSAGES, DEFAULT_MEMORY_MAX_MESSAGES)
+
         # Build tools list ONCE (major performance boost!)
         self._tools = self._build_tools()
         
@@ -1382,8 +1413,8 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": "OpenWeatherMap API key not configured. Add it in Settings → PolyVoice → API Keys."}
             
             # Use custom location if set, otherwise fall back to defaults
-            latitude = self.custom_latitude if self.custom_latitude else 26.0128
-            longitude = self.custom_longitude if self.custom_longitude else -80.3382
+            latitude = self.custom_latitude or self.hass.config.latitude
+            longitude = self.custom_longitude or self.hass.config.longitude
             
             try:
                 result = {}
@@ -1722,7 +1753,7 @@ class LMStudioConversationEntity(ConversationEntity):
             query_type = arguments.get("query_type", "upcoming").lower()
             
             try:
-                now = datetime.now(TIMEZONE)
+                now = datetime.now(self.hass.config.time_zone_object)
                 
                 # Determine time range based on query type
                 if query_type == "today":
@@ -1769,19 +1800,24 @@ class LMStudioConversationEntity(ConversationEntity):
                     max_results = 5
                     period_desc = "upcoming"
                 
-                _LOGGER.info("Calendar search (%s): %s to %s, max_results=%d", 
+                _LOGGER.info("Calendar search (%s): %s to %s, max_results=%d",
                             query_type, start_time.strftime("%Y-%m-%d"), end_time.strftime("%Y-%m-%d"), max_results)
-                
-                # Calendar entity IDs - check what exists
-                all_calendar_entities = [
-                    "calendar.elise_munoz15_gmail_com",
-                    "calendar.birthdays"
-                ]
-                
+
+                # Use configured calendar entities
+                all_calendar_entities = self.calendar_entities if self.calendar_entities else []
+
+                if not all_calendar_entities:
+                    # If no calendars configured, try to find any available
+                    all_states = self.hass.states.async_all()
+                    all_calendar_entities = [s.entity_id for s in all_states if s.entity_id.startswith("calendar.")]
+                    _LOGGER.info("No calendars configured, auto-discovered: %s", all_calendar_entities)
+
                 # Filter to birthday calendar only if query_type is "birthday"
                 if query_type == "birthday":
-                    calendar_entities = ["calendar.birthdays"]
-                    _LOGGER.info("Birthday query - filtering to birthday calendar only")
+                    calendar_entities = [c for c in all_calendar_entities if "birthday" in c.lower()]
+                    if not calendar_entities:
+                        calendar_entities = all_calendar_entities  # Fall back to all if no birthday calendar found
+                    _LOGGER.info("Birthday query - using calendars: %s", calendar_entities)
                 else:
                     calendar_entities = all_calendar_entities
                 
@@ -1833,12 +1869,12 @@ class LMStudioConversationEntity(ConversationEntity):
                                 try:
                                     if "T" in str(event_start):
                                         event_dt = datetime.fromisoformat(str(event_start).replace("Z", "+00:00"))
-                                        event_dt = event_dt.astimezone(TIMEZONE)
+                                        event_dt = event_dt.astimezone(self.hass.config.time_zone_object)
                                         time_str = event_dt.strftime("%B %d at %I:%M %p")
                                         sort_key = event_dt
                                     else:
                                         event_dt = datetime.strptime(str(event_start), "%Y-%m-%d")
-                                        event_dt = TIMEZONE.localize(event_dt)
+                                        event_dt = event_dt.replace(tzinfo=self.hass.config.time_zone_object)
                                         time_str = event_dt.strftime("%B %d") + " (all day)"
                                         sort_key = event_dt
                                 except Exception as parse_err:
@@ -1901,61 +1937,86 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": f"Failed to get calendar events: {str(err)}"}
         
         elif tool_name == "get_sports_info":
-            # Get sports info from ESPN API
+            # Get sports info from ESPN API with dynamic team search
             team_name = arguments.get("team_name", "")
             query_type = arguments.get("query_type", "both")
-            
+
             if not team_name:
                 return {"error": "No team name provided"}
-            
-            # Team to ESPN API mapping
-            team_mapping = {
-                # NHL
-                "panthers": {"league": "nhl", "team": "fla", "full_name": "Florida Panthers"},
-                "florida panthers": {"league": "nhl", "team": "fla", "full_name": "Florida Panthers"},
-                # NBA
-                "heat": {"league": "nba", "team": "mia", "full_name": "Miami Heat"},
-                "miami heat": {"league": "nba", "team": "mia", "full_name": "Miami Heat"},
-                # NFL
-                "dolphins": {"league": "nfl", "team": "mia", "full_name": "Miami Dolphins"},
-                "miami dolphins": {"league": "nfl", "team": "mia", "full_name": "Miami Dolphins"},
-                # MLB
-                "marlins": {"league": "mlb", "team": "mia", "full_name": "Miami Marlins"},
-                "miami marlins": {"league": "mlb", "team": "mia", "full_name": "Miami Marlins"},
-                # MLS
-                "inter miami": {"league": "mls", "team": "inter-miami-cf", "full_name": "Inter Miami CF"},
-                # Premier League
-                "manchester city": {"league": "eng.1", "team": "man-city", "full_name": "Manchester City"},
-                "man city": {"league": "eng.1", "team": "man-city", "full_name": "Manchester City"},
-            }
-            
-            team_key = team_name.lower().strip()
-            team_info = team_mapping.get(team_key)
-            
-            if not team_info:
-                return {"error": f"Team '{team_name}' not found. Supported teams: Panthers, Heat, Dolphins, Marlins, Inter Miami, Manchester City"}
-            
+
             try:
-                headers = {"User-Agent": "HomeAssistant-LMStudio/1.0"}
-                league = team_info["league"]
-                team_abbr = team_info["team"]
-                full_name = team_info["full_name"]
-                
-                # ESPN API endpoint
-                if league in ["nhl", "nba", "nfl", "mlb"]:
-                    base_url = f"https://site.api.espn.com/apis/site/v2/sports"
-                    if league == "nhl":
-                        url = f"{base_url}/hockey/nhl/teams/{team_abbr}/schedule"
-                    elif league == "nba":
-                        url = f"{base_url}/basketball/nba/teams/{team_abbr}/schedule"
-                    elif league == "nfl":
-                        url = f"{base_url}/football/nfl/teams/{team_abbr}/schedule"
-                    elif league == "mlb":
-                        url = f"{base_url}/baseball/mlb/teams/{team_abbr}/schedule"
-                elif league == "mls":
-                    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/{team_abbr}/schedule"
-                else:
-                    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/teams/{team_abbr}/schedule"
+                headers = {"User-Agent": "HomeAssistant-PolyVoice/1.0"}
+                team_key = team_name.lower().strip()
+
+                # Search for team across major leagues using ESPN search API
+                search_url = f"https://site.api.espn.com/apis/site/v2/sports/search?query={urllib.parse.quote(team_name)}&limit=5"
+                async with self._session.get(search_url, headers=headers) as resp:
+                    if resp.status == 200:
+                        search_data = await resp.json()
+                        results = search_data.get("results", [])
+
+                        # Find first team result
+                        team_result = None
+                        for result in results:
+                            if result.get("type") == "team":
+                                team_result = result
+                                break
+
+                        if team_result:
+                            # Extract team info from search result
+                            team_id = team_result.get("id", "")
+                            full_name = team_result.get("displayName", team_name)
+                            # Parse the link to get sport/league info
+                            link = team_result.get("link", "")
+
+                            # Try to construct schedule URL from the link
+                            # Link format example: /nba/team/_/id/14/miami-heat
+                            if "/nba/" in link:
+                                url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}/schedule"
+                            elif "/nfl/" in link:
+                                url = f"https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/{team_id}/schedule"
+                            elif "/mlb/" in link:
+                                url = f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/{team_id}/schedule"
+                            elif "/nhl/" in link:
+                                url = f"https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/{team_id}/schedule"
+                            elif "/soccer/" in link:
+                                # Try to extract league from link
+                                url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/teams/{team_id}/schedule"
+                            else:
+                                return {"error": f"Unsupported sport for team '{team_name}'"}
+                        else:
+                            # Fallback: try direct search in major US leagues
+                            leagues_to_try = [
+                                ("basketball", "nba"),
+                                ("football", "nfl"),
+                                ("baseball", "mlb"),
+                                ("hockey", "nhl"),
+                            ]
+
+                            team_found = False
+                            for sport, league in leagues_to_try:
+                                teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams"
+                                async with self._session.get(teams_url, headers=headers) as teams_resp:
+                                    if teams_resp.status == 200:
+                                        teams_data = await teams_resp.json()
+                                        for team in teams_data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
+                                            t = team.get("team", {})
+                                            if (team_key in t.get("displayName", "").lower() or
+                                                team_key in t.get("shortDisplayName", "").lower() or
+                                                team_key in t.get("nickname", "").lower() or
+                                                team_key == t.get("abbreviation", "").lower()):
+                                                team_id = t.get("id", "")
+                                                full_name = t.get("displayName", team_name)
+                                                url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
+                                                team_found = True
+                                                break
+                                if team_found:
+                                    break
+
+                            if not team_found:
+                                return {"error": f"Team '{team_name}' not found. Try the full team name (e.g., 'Miami Heat', 'New York Yankees')"}
+                    else:
+                        return {"error": f"ESPN search failed: {resp.status}"}
                 
                 async with self._session.get(url, headers=headers) as resp:
                     if resp.status != 200:
@@ -1989,7 +2050,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             else:  # Upcoming game
                                 if next_game is None:
                                     next_game = event
-                        except:
+                        except (ValueError, KeyError, TypeError):
                             pass
                 
                 # Format last game result
@@ -2030,11 +2091,10 @@ class LMStudioConversationEntity(ConversationEntity):
                         try:
                             from zoneinfo import ZoneInfo
                             game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
-                            # Convert to Eastern time
-                            eastern = ZoneInfo("America/New_York")
-                            game_dt_eastern = game_dt.astimezone(eastern)
-                            formatted_date = game_dt_eastern.strftime("%A, %B %d at %I:%M %p ET")
-                        except:
+                            # Convert to HA configured timezone
+                            game_dt_local = game_dt.astimezone(self.hass.config.time_zone_object)
+                            formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
+                        except (ValueError, KeyError, TypeError, AttributeError):
                             formatted_date = game_date_str[:10]
                     else:
                         formatted_date = "TBD"
@@ -2183,9 +2243,9 @@ class LMStudioConversationEntity(ConversationEntity):
                                     try:
                                         # TheNewsAPI format: 2025-12-18T15:32:20.000000Z
                                         dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                                        dt_eastern = dt.astimezone(TIMEZONE)
-                                        date_text = dt_eastern.strftime("%B %d at %I:%M %p")
-                                    except:
+                                        dt_local = dt.astimezone(self.hass.config.time_zone_object)
+                                        date_text = dt_local.strftime("%B %d at %I:%M %p")
+                                    except (ValueError, KeyError, TypeError, AttributeError):
                                         date_text = published_at
                                 
                                 headlines.append({
@@ -2329,10 +2389,10 @@ class LMStudioConversationEntity(ConversationEntity):
                                     game_date = event.get("date", "")
                                     try:
                                         game_dt = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
-                                        game_et = game_dt.astimezone(TIMEZONE)
-                                        game_time = game_et.strftime("%B %d at %I:%M %p ET")
-                                        game_date_short = game_et.strftime("%m/%d")
-                                    except:
+                                        game_local = game_dt.astimezone(self.hass.config.time_zone_object)
+                                        game_time = game_local.strftime("%B %d at %I:%M %p")
+                                        game_date_short = game_local.strftime("%m/%d")
+                                    except (ValueError, KeyError, TypeError, AttributeError):
                                         game_time = game_date
                                         game_date_short = ""
                                     
@@ -2606,15 +2666,16 @@ class LMStudioConversationEntity(ConversationEntity):
                 
                 friendly_name = get_friendly_name(entity_id, current_state)
                 
-                # Determine time range using global TIMEZONE
-                now = datetime.now(TIMEZONE)
-                
+                # Determine time range using HA configured timezone
+                now = datetime.now(self.hass.config.time_zone_object)
+
                 if specific_date:
                     # Query specific date
                     try:
                         target_date = datetime.strptime(specific_date, "%Y-%m-%d")
-                        start_time = TIMEZONE.localize(target_date.replace(hour=0, minute=0, second=0))
-                        end_time = TIMEZONE.localize(target_date.replace(hour=23, minute=59, second=59))
+                        tz = self.hass.config.time_zone_object
+                        start_time = target_date.replace(hour=0, minute=0, second=0, tzinfo=tz)
+                        end_time = target_date.replace(hour=23, minute=59, second=59, tzinfo=tz)
                         period_desc = target_date.strftime("%B %d, %Y")
                     except ValueError:
                         return {"error": f"Invalid date format: {specific_date}. Use YYYY-MM-DD"}
@@ -2684,7 +2745,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             continue
                         
                         try:
-                            state_time = state.last_changed.astimezone(TIMEZONE)
+                            state_time = state.last_changed.astimezone(self.hass.config.time_zone_object)
                             time_str = state_time.strftime("%B %d at %I:%M %p")
                             
                             if state.state == on_state:
@@ -3104,8 +3165,8 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": "Yelp API key not configured. Add it in Settings → PolyVoice → API Keys."}
             
             # Use custom location if set, otherwise fall back to defaults
-            latitude = self.custom_latitude if self.custom_latitude else 26.0128
-            longitude = self.custom_longitude if self.custom_longitude else -80.3382
+            latitude = self.custom_latitude or self.hass.config.latitude
+            longitude = self.custom_longitude or self.hass.config.longitude
             
             try:
                 from urllib.parse import quote
@@ -3201,9 +3262,9 @@ class LMStudioConversationEntity(ConversationEntity):
         if not api_key:
             return {"error": "Google Places API key not configured. Add it in Settings → PolyVoice → API Keys."}
         
-        # Use custom location if set, otherwise fall back to defaults
-        latitude = self.custom_latitude if self.custom_latitude else 26.0155
-        longitude = self.custom_longitude if self.custom_longitude else -80.3500
+        # Use custom location if set, otherwise fall back to HA location
+        latitude = self.custom_latitude or self.hass.config.latitude
+        longitude = self.custom_longitude or self.hass.config.longitude
         
         try:
             url = "https://places.googleapis.com/v1/places:searchText"

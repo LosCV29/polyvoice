@@ -73,6 +73,11 @@ from .const import (
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
     CONF_DEVICE_ALIASES,
+    CONF_NOTIFICATION_SERVICE,
+    CONF_CAMERA_ENTITIES,
+    # Conversation settings
+    CONF_CONVERSATION_MEMORY,
+    CONF_MEMORY_MAX_MESSAGES,
     # Defaults
     DEFAULT_USE_NATIVE_INTENTS,
     DEFAULT_EXCLUDED_INTENTS,
@@ -102,6 +107,10 @@ from .const import (
     DEFAULT_MUSIC_PLAYERS,
     DEFAULT_DEFAULT_MUSIC_PLAYER,
     DEFAULT_DEVICE_ALIASES,
+    DEFAULT_NOTIFICATION_SERVICE,
+    DEFAULT_CAMERA_ENTITIES,
+    DEFAULT_CONVERSATION_MEMORY,
+    DEFAULT_MEMORY_MAX_MESSAGES,
     ALL_NATIVE_INTENTS,
 )
 
@@ -471,11 +480,11 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             # Convert entity lists to the format we need
             processed_input = {}
-            
+
             # Handle thermostat - single entity
             if CONF_THERMOSTAT_ENTITY in user_input:
                 processed_input[CONF_THERMOSTAT_ENTITY] = user_input[CONF_THERMOSTAT_ENTITY]
-            
+
             # Handle calendars - convert list to newline-separated string
             if CONF_CALENDAR_ENTITIES in user_input:
                 cal_list = user_input[CONF_CALENDAR_ENTITIES]
@@ -483,26 +492,45 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     processed_input[CONF_CALENDAR_ENTITIES] = "\n".join(cal_list)
                 else:
                     processed_input[CONF_CALENDAR_ENTITIES] = cal_list
-            
+
+            # Handle cameras - convert list to newline-separated string
+            if CONF_CAMERA_ENTITIES in user_input:
+                cam_list = user_input[CONF_CAMERA_ENTITIES]
+                if isinstance(cam_list, list):
+                    processed_input[CONF_CAMERA_ENTITIES] = "\n".join(cam_list)
+                else:
+                    processed_input[CONF_CAMERA_ENTITIES] = cam_list
+
             # Handle default music player - single entity
             if CONF_DEFAULT_MUSIC_PLAYER in user_input:
                 processed_input[CONF_DEFAULT_MUSIC_PLAYER] = user_input[CONF_DEFAULT_MUSIC_PLAYER]
-            
+
             # Handle music players by room - keep as text for now
             if CONF_MUSIC_PLAYERS in user_input:
                 processed_input[CONF_MUSIC_PLAYERS] = user_input[CONF_MUSIC_PLAYERS]
-            
+
+            # Handle notification service
+            if CONF_NOTIFICATION_SERVICE in user_input:
+                processed_input[CONF_NOTIFICATION_SERVICE] = user_input[CONF_NOTIFICATION_SERVICE]
+
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
 
         current = {**self._entry.data, **self._entry.options}
-        
+
         # Parse current calendar entities back to list
         current_calendars = current.get(CONF_CALENDAR_ENTITIES, DEFAULT_CALENDAR_ENTITIES)
         if isinstance(current_calendars, str) and current_calendars:
             current_calendars = [c.strip() for c in current_calendars.split("\n") if c.strip()]
         elif not current_calendars:
             current_calendars = []
+
+        # Parse current camera entities back to list
+        current_cameras = current.get(CONF_CAMERA_ENTITIES, DEFAULT_CAMERA_ENTITIES)
+        if isinstance(current_cameras, str) and current_cameras:
+            current_cameras = [c.strip() for c in current_cameras.split("\n") if c.strip()]
+        elif not current_cameras:
+            current_cameras = []
 
         return self.async_show_form(
             step_id="entities",
@@ -527,6 +555,15 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         )
                     ),
                     vol.Optional(
+                        CONF_CAMERA_ENTITIES,
+                        default=current_cameras,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="camera",
+                            multiple=True,
+                        )
+                    ),
+                    vol.Optional(
                         CONF_DEFAULT_MUSIC_PLAYER,
                         default=current.get(CONF_DEFAULT_MUSIC_PLAYER, DEFAULT_DEFAULT_MUSIC_PLAYER),
                     ): selector.EntitySelector(
@@ -542,6 +579,14 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             multiline=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_NOTIFICATION_SERVICE,
+                        default=current.get(CONF_NOTIFICATION_SERVICE, DEFAULT_NOTIFICATION_SERVICE),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
                         )
                     ),
                 }
@@ -668,6 +713,14 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="advanced",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(
+                        CONF_CONVERSATION_MEMORY,
+                        default=current.get(CONF_CONVERSATION_MEMORY, DEFAULT_CONVERSATION_MEMORY),
+                    ): cv.boolean,
+                    vol.Optional(
+                        CONF_MEMORY_MAX_MESSAGES,
+                        default=current.get(CONF_MEMORY_MAX_MESSAGES, DEFAULT_MEMORY_MAX_MESSAGES),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=2, max=50)),
                     vol.Optional(
                         CONF_LLM_HASS_API,
                         default=current.get(CONF_LLM_HASS_API, DEFAULT_LLM_HASS_API),
