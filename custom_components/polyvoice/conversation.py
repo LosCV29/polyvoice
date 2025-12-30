@@ -2841,18 +2841,29 @@ class LMStudioConversationEntity(ConversationEntity):
             if not all_players:
                 return {"error": "No music players configured. Go to Settings → PolyVoice → Configure and add your speakers."}
 
-            # Build room -> player mapping from configured entity IDs
+            # Build room -> player mapping using friendly_name attribute
             def extract_room_name(entity_id: str) -> str:
-                """Extract room name from entity_id for matching."""
+                """Extract room name from entity's friendly_name attribute."""
+                state = self.hass.states.get(entity_id)
+                if state:
+                    friendly_name = state.attributes.get("friendly_name", "").lower()
+                    # Extract room from friendly name like "Home Assistant Voice Kitchen Media Player"
+                    name = friendly_name
+                    # Remove common prefixes/suffixes
+                    name = name.replace("home assistant voice", "").strip()
+                    name = name.replace("media player", "").strip()
+                    name = name.replace("speaker", "").strip()
+                    # Handle specific known mappings
+                    if "pioneer" in name or "vsx" in name:
+                        name = "living room"
+                    # Clean up
+                    name = name.replace("_", " ").strip()
+                    if name:
+                        return name
+                # Fallback to entity_id parsing if no friendly_name
                 name = entity_id.lower().replace("media_player.", "")
-                # Remove common prefixes/suffixes to get room name
                 name = name.replace("home_assistant_voice_", "")
                 name = name.replace("_media_player", "")
-                name = name.replace("_speaker", "")
-                name = name.replace("_chromecast", "")
-                # Handle specific known mappings
-                if "pioneer" in name or "vsx" in name:
-                    name = "living room"
                 name = name.replace("_", " ").strip()
                 return name
 
@@ -2861,6 +2872,7 @@ class LMStudioConversationEntity(ConversationEntity):
             for player in all_players:
                 room_name = extract_room_name(player)
                 music_players[room_name] = player
+                _LOGGER.debug("Mapped room '%s' -> %s", room_name, player)
 
             _LOGGER.info("Music players: %s", music_players)
 
@@ -2988,21 +3000,41 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"status": "stopped", "message": f"Music stopped {room_text}"}
 
                 elif action == "skip_next":
-                    for player in target_players:
-                        await self.hass.services.async_call(
-                            "media_player", "media_next_track",
-                            {"entity_id": player},
-                            blocking=True
-                        )
+                    # Find THE currently playing player (only one!)
+                    playing_player = None
+                    for player in all_players:
+                        state = self.hass.states.get(player)
+                        if state and state.state == "playing":
+                            playing_player = player
+                            break
+
+                    if not playing_player:
+                        return {"error": "No music is currently playing"}
+
+                    await self.hass.services.async_call(
+                        "media_player", "media_next_track",
+                        {"entity_id": playing_player},
+                        blocking=True
+                    )
                     return {"status": "skipped", "message": "Skipped to next track"}
 
                 elif action == "skip_previous":
-                    for player in target_players:
-                        await self.hass.services.async_call(
-                            "media_player", "media_previous_track",
-                            {"entity_id": player},
-                            blocking=True
-                        )
+                    # Find THE currently playing player (only one!)
+                    playing_player = None
+                    for player in all_players:
+                        state = self.hass.states.get(player)
+                        if state and state.state == "playing":
+                            playing_player = player
+                            break
+
+                    if not playing_player:
+                        return {"error": "No music is currently playing"}
+
+                    await self.hass.services.async_call(
+                        "media_player", "media_previous_track",
+                        {"entity_id": playing_player},
+                        blocking=True
+                    )
                     return {"status": "skipped", "message": "Skipped to previous track"}
 
                 elif action == "what_playing":
