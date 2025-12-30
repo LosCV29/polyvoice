@@ -2844,30 +2844,38 @@ class LMStudioConversationEntity(ConversationEntity):
                     players.append(entity_id)
                 return players
 
-            # DYNAMIC: Find currently playing player - PREFER Music Assistant entities (mass_*)
+            # Helper to check if entity is a valid speaker (not TV, receiver, etc.)
+            def is_valid_speaker(entity_id: str) -> bool:
+                """Check if entity is a speaker we can control."""
+                e = entity_id.lower()
+                # Valid: HA Voice satellites, Music Assistant players
+                if "home_assistant_voice" in e and "media_player" in e:
+                    return True
+                if "mass_" in e:
+                    return True
+                # Invalid: TVs, receivers, AirPlay, Chromecast built-in
+                invalid_keywords = ["_tv", "chromecast", "airplay", "vsx", "pioneer", "receiver", "zone_"]
+                for kw in invalid_keywords:
+                    if kw in e:
+                        return False
+                return False  # Default to invalid for safety
+
+            # DYNAMIC: Find currently playing player - PREFER valid speakers
             def find_playing_player() -> str | None:
-                """Find any media player that is currently playing. Prefers Music Assistant entities."""
+                """Find any valid speaker that is currently playing."""
                 playing_players = []
 
-                # Collect ALL playing players
+                # Collect ALL playing players that are valid speakers
                 for entity_id in self.hass.states.async_entity_ids("media_player"):
                     state = self.hass.states.get(entity_id)
                     if state and state.state in ("playing", "buffering"):
-                        playing_players.append(entity_id)
+                        if is_valid_speaker(entity_id):
+                            playing_players.append(entity_id)
 
                 if not playing_players:
                     return None
 
-                _LOGGER.info("Found %d playing players: %s", len(playing_players), playing_players)
-
-                # PREFER Music Assistant entities (mass_*) - they're the correct ones to control
-                for player in playing_players:
-                    if "mass_" in player.lower():
-                        _LOGGER.info("Using Music Assistant player: %s", player)
-                        return player
-
-                # Fall back to first non-mass player
-                _LOGGER.info("No mass_ player found, using: %s", playing_players[0])
+                _LOGGER.info("Found %d valid playing speakers: %s", len(playing_players), playing_players)
                 return playing_players[0]
 
             # For targeting, prefer configured players; for finding what's playing, search all
@@ -2876,38 +2884,44 @@ class LMStudioConversationEntity(ConversationEntity):
             if not all_players and not self.default_music_player:
                 return {"error": "No music players found. Add them in Settings → PolyVoice → Entity Configuration."}
 
-            # Helper to find player by room name - PREFER Music Assistant entities (mass_*)
+            # Helper to find player by room name - ONLY valid speakers
             def find_player_by_room(room_name: str) -> str | None:
                 room_normalized = room_name.replace(" ", "_").lower()
-                all_matches = []
 
-                # Find ALL matching players
-                for player in get_all_media_players():
-                    player_lower = player.lower()
-                    if room_normalized in player_lower or room_name.replace(" ", "") in player_lower:
-                        all_matches.append(player)
+                # Get only valid speakers
+                valid_speakers = [p for p in get_all_media_players() if is_valid_speaker(p)]
 
-                if not all_matches:
-                    _LOGGER.warning("No player found for room '%s'", room_name)
+                if not valid_speakers:
+                    _LOGGER.warning("No valid speakers found in HA!")
                     return None
 
-                _LOGGER.info("Found %d players matching room '%s': %s", len(all_matches), room_name, all_matches)
+                _LOGGER.info("Available speakers: %s", valid_speakers)
 
-                # PREFER Music Assistant entities (mass_*)
-                for player in all_matches:
-                    if "mass_" in player.lower():
-                        _LOGGER.info("Using Music Assistant player for room: %s", player)
+                # Find matching player by room name
+                for player in valid_speakers:
+                    player_lower = player.lower()
+                    # Clean up entity name for matching
+                    player_name = player_lower.replace("media_player.", "")
+                    player_name = player_name.replace("home_assistant_voice_", "")
+                    player_name = player_name.replace("mass_", "")
+                    player_name = player_name.replace("_media_player", "")
+
+                    if room_normalized in player_name or room_name.replace(" ", "") in player_name:
+                        _LOGGER.info("Matched room '%s' to speaker: %s", room_name, player)
                         return player
 
-                # Fall back to first match
-                return all_matches[0]
+                _LOGGER.warning("No speaker found for room '%s'. Available: %s", room_name, valid_speakers)
+                return None
 
             # Helper to extract room name from entity_id
             def get_room_from_player(player: str) -> str:
-                # media_player.living_room_speaker -> "living room"
-                name = player.replace("media_player.", "").replace("_speaker", "").replace("_", " ")
-                # Also handle mass_ prefix for Music Assistant
+                # media_player.home_assistant_voice_kitchen_media_player -> "Kitchen"
+                name = player.replace("media_player.", "")
+                name = name.replace("home_assistant_voice_", "")
+                name = name.replace("_media_player", "")
                 name = name.replace("mass_", "")
+                name = name.replace("_speaker", "")
+                name = name.replace("_", " ")
                 return name.title()
 
             try:
@@ -3120,47 +3134,41 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     _LOGGER.info("Transferring music from %s to %s", source_player, target_player)
 
-                    # Transfer queue from source to target
+                    # Get what's currently playing on source
+                    source_state = self.hass.states.get(source_player)
+                    if not source_state:
+                        return {"error": "Could not get source player state"}
+
+                    media_id = source_state.attributes.get("media_content_id")
+                    media_type = source_state.attributes.get("media_content_type", "music")
+
+                    if not media_id:
+                        return {"error": "Could not get current media to transfer"}
+
+                    _LOGGER.info("Transferring media_id=%s to %s", media_id, target_player)
+
                     try:
-                        # Music Assistant transfer_queue service
+                        # Play the same media on target
                         await self.hass.services.async_call(
-                            "music_assistant", "transfer_queue",
+                            "media_player", "play_media",
                             {
-                                "source_player": source_player,
-                                "auto_play": True,
+                                "media_content_id": media_id,
+                                "media_content_type": media_type,
                             },
                             target={"entity_id": target_player},
                             blocking=True
                         )
-                        _LOGGER.info("transfer_queue service call completed successfully")
+
+                        # Stop/pause source
+                        await self.hass.services.async_call(
+                            "media_player", "media_pause",
+                            target={"entity_id": source_player},
+                            blocking=True
+                        )
+                        _LOGGER.info("Transfer completed: %s -> %s", source_player, target_player)
                     except Exception as transfer_err:
-                        _LOGGER.error("transfer_queue failed: %s", transfer_err)
-                        # Try alternative: just play on target what's playing on source
-                        try:
-                            source_state = self.hass.states.get(source_player)
-                            if source_state:
-                                media_id = source_state.attributes.get("media_content_id")
-                                media_type = source_state.attributes.get("media_content_type", "music")
-                                if media_id:
-                                    _LOGGER.info("Fallback: Playing %s on %s", media_id, target_player)
-                                    await self.hass.services.async_call(
-                                        "media_player", "play_media",
-                                        {
-                                            "media_content_id": media_id,
-                                            "media_content_type": media_type,
-                                        },
-                                        target={"entity_id": target_player},
-                                        blocking=True
-                                    )
-                                    # Pause source
-                                    await self.hass.services.async_call(
-                                        "media_player", "media_pause",
-                                        target={"entity_id": source_player},
-                                        blocking=True
-                                    )
-                        except Exception as fallback_err:
-                            _LOGGER.error("Fallback transfer also failed: %s", fallback_err)
-                            return {"error": f"Transfer failed: {str(transfer_err)}"}
+                        _LOGGER.error("Transfer failed: %s", transfer_err)
+                        return {"error": f"Transfer failed: {str(transfer_err)}"}
 
                     # Update last active player
                     if self.last_active_speaker and self.hass.states.get(self.last_active_speaker):
