@@ -2844,22 +2844,31 @@ class LMStudioConversationEntity(ConversationEntity):
                     players.append(entity_id)
                 return players
 
-            # DYNAMIC: Find currently playing player(s) from ALL media players
+            # DYNAMIC: Find currently playing player - PREFER Music Assistant entities (mass_*)
             def find_playing_player() -> str | None:
-                """Find any media player that is currently playing."""
-                # First check configured players
-                for player in configured_players:
-                    state = self.hass.states.get(player)
-                    if state and state.state in ("playing", "buffering"):
-                        return player
+                """Find any media player that is currently playing. Prefers Music Assistant entities."""
+                playing_players = []
 
-                # If none found, check ALL media players in HA
+                # Collect ALL playing players
                 for entity_id in self.hass.states.async_entity_ids("media_player"):
                     state = self.hass.states.get(entity_id)
                     if state and state.state in ("playing", "buffering"):
-                        _LOGGER.info("Found playing player dynamically: %s", entity_id)
-                        return entity_id
-                return None
+                        playing_players.append(entity_id)
+
+                if not playing_players:
+                    return None
+
+                _LOGGER.info("Found %d playing players: %s", len(playing_players), playing_players)
+
+                # PREFER Music Assistant entities (mass_*) - they're the correct ones to control
+                for player in playing_players:
+                    if "mass_" in player.lower():
+                        _LOGGER.info("Using Music Assistant player: %s", player)
+                        return player
+
+                # Fall back to first non-mass player
+                _LOGGER.info("No mass_ player found, using: %s", playing_players[0])
+                return playing_players[0]
 
             # For targeting, prefer configured players; for finding what's playing, search all
             all_players = configured_players if configured_players else get_all_media_players()
@@ -2867,20 +2876,31 @@ class LMStudioConversationEntity(ConversationEntity):
             if not all_players and not self.default_music_player:
                 return {"error": "No music players found. Add them in Settings → PolyVoice → Entity Configuration."}
 
-            # Helper to find player by room name (matches entity_id containing room)
+            # Helper to find player by room name - PREFER Music Assistant entities (mass_*)
             def find_player_by_room(room_name: str) -> str | None:
                 room_normalized = room_name.replace(" ", "_").lower()
-                # Check configured players first
-                for player in configured_players:
-                    player_lower = player.lower()
-                    if room_normalized in player_lower or room_name.replace(" ", "") in player_lower:
-                        return player
-                # Fall back to all media players
+                all_matches = []
+
+                # Find ALL matching players
                 for player in get_all_media_players():
                     player_lower = player.lower()
                     if room_normalized in player_lower or room_name.replace(" ", "") in player_lower:
+                        all_matches.append(player)
+
+                if not all_matches:
+                    _LOGGER.warning("No player found for room '%s'", room_name)
+                    return None
+
+                _LOGGER.info("Found %d players matching room '%s': %s", len(all_matches), room_name, all_matches)
+
+                # PREFER Music Assistant entities (mass_*)
+                for player in all_matches:
+                    if "mass_" in player.lower():
+                        _LOGGER.info("Using Music Assistant player for room: %s", player)
                         return player
-                return None
+
+                # Fall back to first match
+                return all_matches[0]
 
             # Helper to extract room name from entity_id
             def get_room_from_player(player: str) -> str:
@@ -3101,16 +3121,46 @@ class LMStudioConversationEntity(ConversationEntity):
                     _LOGGER.info("Transferring music from %s to %s", source_player, target_player)
 
                     # Transfer queue from source to target
-                    # auto_play=True ensures playback continues without restarting
-                    await self.hass.services.async_call(
-                        "music_assistant", "transfer_queue",
-                        {
-                            "source_player": source_player,
-                            "auto_play": True,
-                        },
-                        target={"entity_id": target_player},
-                        blocking=True
-                    )
+                    try:
+                        # Music Assistant transfer_queue service
+                        await self.hass.services.async_call(
+                            "music_assistant", "transfer_queue",
+                            {
+                                "source_player": source_player,
+                                "auto_play": True,
+                            },
+                            target={"entity_id": target_player},
+                            blocking=True
+                        )
+                        _LOGGER.info("transfer_queue service call completed successfully")
+                    except Exception as transfer_err:
+                        _LOGGER.error("transfer_queue failed: %s", transfer_err)
+                        # Try alternative: just play on target what's playing on source
+                        try:
+                            source_state = self.hass.states.get(source_player)
+                            if source_state:
+                                media_id = source_state.attributes.get("media_content_id")
+                                media_type = source_state.attributes.get("media_content_type", "music")
+                                if media_id:
+                                    _LOGGER.info("Fallback: Playing %s on %s", media_id, target_player)
+                                    await self.hass.services.async_call(
+                                        "media_player", "play_media",
+                                        {
+                                            "media_content_id": media_id,
+                                            "media_content_type": media_type,
+                                        },
+                                        target={"entity_id": target_player},
+                                        blocking=True
+                                    )
+                                    # Pause source
+                                    await self.hass.services.async_call(
+                                        "media_player", "media_pause",
+                                        target={"entity_id": source_player},
+                                        blocking=True
+                                    )
+                        except Exception as fallback_err:
+                            _LOGGER.error("Fallback transfer also failed: %s", fallback_err)
+                            return {"error": f"Transfer failed: {str(transfer_err)}"}
 
                     # Update last active player
                     if self.last_active_speaker and self.hass.states.get(self.last_active_speaker):
