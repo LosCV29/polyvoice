@@ -889,8 +889,8 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
                 }
             })
-        
-                    # Flexible camera tool - works with any camera location
+
+            # Flexible camera tool - works with any camera location via ha_video_vision
             # Supports voice patterns: "check the X camera" and "is there anyone in X"
             tools.append({
                 "type": "function",
@@ -914,7 +914,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
 
-# ===== DEVICE STATUS (if enabled) =====
+        # ===== DEVICE STATUS (if enabled) =====
         if self.enable_device_status:
             tools.append({
                 "type": "function",
