@@ -733,6 +733,9 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Handle advanced settings."""
         if user_input is not None:
+            # Explicitly handle boolean - unchecked checkbox may not be in user_input
+            if CONF_CONVERSATION_MEMORY not in user_input:
+                user_input[CONF_CONVERSATION_MEMORY] = False
             new_options = {**self._entry.options, **user_input}
             return self.async_create_entry(title="", data=new_options)
 
