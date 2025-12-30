@@ -2857,6 +2857,15 @@ class LMStudioConversationEntity(ConversationEntity):
             try:
                 _LOGGER.info("Music control: action=%s, query=%s, media_type=%s, room=%s, shuffle=%s",
                             action, query, media_type, room, shuffle)
+                _LOGGER.info("Configured players: %s, default: %s", all_players, self.default_music_player)
+
+                # Log current state of all configured players
+                for p in all_players:
+                    p_state = self.hass.states.get(p)
+                    if p_state:
+                        _LOGGER.debug("Player %s state: %s", p, p_state.state)
+                    else:
+                        _LOGGER.warning("Player %s not found in HA states!", p)
 
                 # Determine target player(s)
                 if room == "everywhere":
@@ -2979,19 +2988,22 @@ class LMStudioConversationEntity(ConversationEntity):
                     playing_player = None
                     for player in all_players:
                         state = self.hass.states.get(player)
-                        if state and state.state == "playing":
+                        if state and state.state in ("playing", "buffering"):
                             playing_player = player
+                            _LOGGER.info("Found playing player for skip_next: %s (state: %s)", player, state.state)
                             break
-                    
+
                     if playing_player:
+                        _LOGGER.info("Calling media_next_track on %s", playing_player)
                         await self.hass.services.async_call(
                             "media_player", "media_next_track",
-                            {"entity_id": playing_player},
+                            target={"entity_id": playing_player},
                             blocking=True
                         )
 
                         return {"status": "skipped", "message": "Skipped to next track"}
                     else:
+                        _LOGGER.warning("skip_next: No playing player found. all_players=%s", all_players)
                         return {"error": "No music is currently playing"}
                 
                 elif action == "skip_previous":
@@ -2999,19 +3011,22 @@ class LMStudioConversationEntity(ConversationEntity):
                     playing_player = None
                     for player in all_players:
                         state = self.hass.states.get(player)
-                        if state and state.state == "playing":
+                        if state and state.state in ("playing", "buffering"):
                             playing_player = player
+                            _LOGGER.info("Found playing player for skip_previous: %s (state: %s)", player, state.state)
                             break
-                    
+
                     if playing_player:
+                        _LOGGER.info("Calling media_previous_track on %s", playing_player)
                         await self.hass.services.async_call(
                             "media_player", "media_previous_track",
-                            {"entity_id": playing_player},
+                            target={"entity_id": playing_player},
                             blocking=True
                         )
 
                         return {"status": "skipped", "message": "Skipped to previous track"}
                     else:
+                        _LOGGER.warning("skip_previous: No playing player found. all_players=%s", all_players)
                         return {"error": "No music is currently playing"}
                 
                 elif action == "what_playing":
@@ -3072,9 +3087,13 @@ class LMStudioConversationEntity(ConversationEntity):
                     _LOGGER.info("Transferring music from %s to %s", source_player, target_player)
 
                     # Transfer queue from source to target
+                    # auto_play=True ensures playback continues without restarting
                     await self.hass.services.async_call(
                         "music_assistant", "transfer_queue",
-                        {"source_player": source_player},
+                        {
+                            "source_player": source_player,
+                            "auto_play": True,
+                        },
                         target={"entity_id": target_player},
                         blocking=True
                     )
@@ -3089,7 +3108,48 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     room_text = get_room_from_player(target_player)
                     return {"status": "transferred", "message": f"Music transferred to {room_text}"}
-                
+
+                elif action == "volume":
+                    volume_level = arguments.get("volume")
+                    if volume_level is None:
+                        return {"error": "Please specify volume level (0-100)"}
+
+                    # Clamp volume to 0-100
+                    volume_level = max(0, min(100, int(volume_level)))
+                    volume_float = volume_level / 100.0
+
+                    # If room specified, set volume for that room only
+                    # Otherwise, set for currently playing or all configured players
+                    if room and room != "everywhere":
+                        volume_targets = [find_player_by_room(room)] if find_player_by_room(room) else []
+                    elif room == "everywhere":
+                        volume_targets = all_players
+                    else:
+                        # Find currently playing player
+                        volume_targets = []
+                        for player in all_players:
+                            state = self.hass.states.get(player)
+                            if state and state.state in ("playing", "paused", "buffering"):
+                                volume_targets.append(player)
+                                break
+                        if not volume_targets:
+                            volume_targets = [self.default_music_player] if self.default_music_player else all_players[:1]
+
+                    if not volume_targets or not volume_targets[0]:
+                        return {"error": "No speaker found to adjust volume"}
+
+                    for player in volume_targets:
+                        await self.hass.services.async_call(
+                            "media_player", "volume_set",
+                            {"volume_level": volume_float},
+                            target={"entity_id": player},
+                            blocking=True
+                        )
+                        _LOGGER.info("Set volume to %d%% on %s", volume_level, player)
+
+                    room_text = f"in the {room}" if room and room != "everywhere" else ("everywhere" if room == "everywhere" else "")
+                    return {"status": "volume_set", "message": f"Volume set to {volume_level}% {room_text}".strip()}
+
                 else:
                     return {"error": f"Unknown action: {action}"}
                     
