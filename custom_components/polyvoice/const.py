@@ -220,12 +220,8 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    # Music intents - route to PolyVoice for Music Assistant control
-    "HassMediaNext",
-    "HassMediaPause",
-    "HassMediaPrevious",
-    "HassMediaUnpause",
-    "HassSetVolume",
+    # Music intents (pause/resume/skip) now handled by native HA intents
+    # Only play/shuffle/transfer go to LLM via control_music tool
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
