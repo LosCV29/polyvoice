@@ -75,11 +75,12 @@
         "title": "Entity Configuration",
         "description": "Configure which Home Assistant entities to use for each feature",
         "data": {
-          "thermostat_entity": "Thermostat Entity ID (e.g., climate.thermostat)",
-          "calendar_entities": "Calendar Entities (one per line)",
-          "default_music_player": "Default Music Player Entity ID",
+          "thermostat_entity": "Thermostat",
+          "calendar_entities": "Calendars",
+          "camera_entities": "Cameras",
+          "default_music_player": "Default Music Player",
           "music_players": "Music Players by Room (room:entity_id, one per line)",
-          "device_aliases": "Device Aliases (alias:entity_id, one per line)"
+          "notification_service": "Notification Service (e.g., mobile_app_your_phone)"
         }
       },
       "api_keys": {
@@ -113,6 +114,8 @@
       "advanced": {
         "title": "Advanced Settings",
         "data": {
+          "conversation_memory": "Enable Conversation Memory",
+          "memory_max_messages": "Max Messages to Remember (2-50)",
           "llm_hass_api": "LLM Home Assistant API",
           "system_prompt": "System Prompt"
         }
