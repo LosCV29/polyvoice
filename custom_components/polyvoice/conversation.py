@@ -139,6 +139,36 @@ ALLOWED_SERVICE_DOMAINS = {
 # API timeout in seconds for external calls
 API_TIMEOUT = 15
 
+# Camera friendly names mapping (for display purposes)
+CAMERA_FRIENDLY_NAMES = {
+    "porch": "Front Porch",
+    "front_porch": "Front Porch",
+    "front porch": "Front Porch",
+    "front door": "Front Door",
+    "frontdoor": "Front Door",
+    "backyard": "Backyard",
+    "back yard": "Backyard",
+    "garden": "Backyard",
+    "driveway": "Driveway",
+    "drive way": "Driveway",
+    "garage": "Garage",
+    "side": "Side Yard",
+    "side yard": "Side Yard",
+    "kitchen": "Kitchen",
+    "living room": "Living Room",
+    "livingroom": "Living Room",
+    "nursery": "Nursery",
+    "baby": "Nursery",
+    "bedroom": "Bedroom",
+    "office": "Office",
+    "basement": "Basement",
+    "attic": "Attic",
+    "pool": "Pool",
+    "patio": "Patio",
+    "deck": "Deck",
+}
+
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -853,7 +883,31 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
         
-        # ===== DEVICE STATUS (if enabled) =====
+                    # Flexible camera tool - works with any camera location
+            # Supports voice patterns: "check the X camera" and "is there anyone in X"
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "analyze_camera",
+                    "description": "Check ANY camera by location name using AI vision + facial recognition. Use this tool for requests like: 'check the [location] camera', 'is there anyone in [location]', 'is there anyone in the [location]', 'who is in the [location]', 'what's happening in [location]', 'show me the [location]'. Works with any camera location such as garage, kitchen, nursery, office, bedroom, living room, basement, pool, patio, side yard, etc. Always extract the location name from the user's request.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The camera location to check. Extract this from phrases like 'check the X camera' or 'is there anyone in X'. Examples: 'garage', 'kitchen', 'nursery', 'living room', 'bedroom', 'office', 'pool', 'patio', 'side yard', 'front yard'"
+                            },
+                            "query": {
+                                "type": "string",
+                                "description": "Optional specific question about what to look for (e.g., 'is the baby sleeping', 'is there a package', 'is the car there')"
+                            }
+                        },
+                        "required": ["location"]
+                    }
+                }
+            })
+
+# ===== DEVICE STATUS (if enabled) =====
         if self.enable_device_status:
             tools.append({
                 "type": "function",
@@ -3152,7 +3206,74 @@ class LMStudioConversationEntity(ConversationEntity):
                     "error": f"Failed to check {friendly_name} camera: {str(err)}"
                 }
         
-        elif tool_name == "get_restaurant_recommendations":
+                elif tool_name == "analyze_camera":
+            # Flexible camera analysis - works with any camera location
+            location = arguments.get("location", "").lower().strip()
+            query = arguments.get("query", "")
+
+            if not location:
+                return {"error": "No camera location specified"}
+
+            # Get friendly name for display
+            friendly_name = CAMERA_FRIENDLY_NAMES.get(location, location.replace("_", " ").title())
+
+            try:
+                # Build service call data
+                service_data = {
+                    "camera": location,
+                    "duration": 3,
+                }
+                if query:
+                    service_data["user_query"] = query
+
+                # Call ha_video_vision integration service
+                result = await self.hass.services.async_call(
+                    "ha_video_vision",
+                    "analyze_camera",
+                    service_data,
+                    blocking=True,
+                    return_response=True,
+                )
+
+                if not result or not result.get("success"):
+                    error_msg = result.get('error', 'Unknown error') if result else 'Service unavailable'
+                    return {
+                        "location": friendly_name,
+                        "status": "unavailable",
+                        "error": f"Could not access {friendly_name} camera: {error_msg}"
+                    }
+
+                # Build response with identification
+                identified = result.get("identified_people", [])
+                analysis = result.get("description", "Unable to analyze camera feed")
+                person_detected = result.get("person_detected", False)
+
+                if identified:
+                    people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
+                    return {
+                        "location": friendly_name,
+                        "status": "checked",
+                        "person_detected": True,
+                        "identified": people_str,
+                        "description": analysis
+                    }
+                else:
+                    return {
+                        "location": friendly_name,
+                        "status": "checked",
+                        "person_detected": person_detected,
+                        "description": analysis
+                    }
+
+            except Exception as err:
+                _LOGGER.error("Error analyzing camera %s: %s", location, err, exc_info=True)
+                return {
+                    "location": friendly_name,
+                    "status": "error",
+                    "error": f"Failed to check {friendly_name} camera: {str(err)}"
+                }
+
+elif tool_name == "get_restaurant_recommendations":
             query = arguments.get("query", "")
             max_results = min(arguments.get("max_results", 5), 10)
             
