@@ -104,6 +104,7 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     DEFAULT_CONVERSATION_MEMORY,
     DEFAULT_MEMORY_MAX_MESSAGES,
+    DEFAULT_CAMERA_FRIENDLY_NAMES,
     ALL_NATIVE_INTENTS,
 )
 
@@ -531,6 +532,22 @@ class LMStudioConversationEntity(ConversationEntity):
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
+        # Build camera friendly names mapping from configured camera entities
+        # camera.front_porch -> key: "front_porch", friendly: "Front Porch"
+        self.camera_friendly_names = {}
+        for entity_id in self.camera_entities:
+            # Extract camera key from entity_id (e.g., camera.front_porch -> front_porch)
+            if entity_id.startswith("camera."):
+                camera_key = entity_id.replace("camera.", "").replace("_camera", "")
+            else:
+                camera_key = entity_id.replace("_camera", "")
+            # Get friendly name from defaults or generate from key
+            friendly_name = DEFAULT_CAMERA_FRIENDLY_NAMES.get(
+                camera_key,
+                camera_key.replace("_", " ").title()
+            )
+            self.camera_friendly_names[camera_key] = friendly_name
+
         # Conversation memory settings
         self.conversation_memory_enabled = config.get(CONF_CONVERSATION_MEMORY, DEFAULT_CONVERSATION_MEMORY)
         self.memory_max_messages = config.get(CONF_MEMORY_MAX_MESSAGES, DEFAULT_MEMORY_MAX_MESSAGES)
@@ -799,13 +816,18 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
         
-        # ===== CAMERA CHECKS (if enabled) =====
-        if self.enable_cameras:
+        # ===== CAMERA CHECKS (if enabled and cameras configured) =====
+        if self.enable_cameras and self.camera_friendly_names:
+            # Build list of available cameras for tool descriptions
+            camera_list = ", ".join(self.camera_friendly_names.values())
+            camera_keys = ", ".join([f"'{k}'" for k in self.camera_friendly_names.keys()])
+
+            # Check all cameras at once
             tools.append({
                 "type": "function",
                 "function": {
-                    "name": "check_outdoor_cameras",
-                    "description": "Check ALL outdoor cameras at once using AI vision + facial recognition. Use for: 'check the cameras', 'is anyone outside', 'check outside', 'what's happening outside', 'check all cameras'.",
+                    "name": "check_all_cameras",
+                    "description": f"Check ALL cameras at once using AI vision + facial recognition. Available cameras: {camera_list}. Use for: 'check the cameras', 'is anyone outside', 'check outside', 'what's happening outside', 'check all cameras'.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -813,42 +835,27 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
                 }
             })
-            
+
+            # Check a specific camera
             tools.append({
                 "type": "function",
                 "function": {
-                    "name": "check_porch_camera",
-                    "description": "Check the porch/front door camera using AI vision + facial recognition. Use for: 'check the porch', 'who's at the door', 'is anyone at the front door'.",
+                    "name": "check_camera",
+                    "description": f"Check a specific camera using AI vision + facial recognition. Available cameras: {camera_list}. Use for: 'check the porch', 'who's at the door', 'what's in the backyard', 'check the driveway'.",
                     "parameters": {
                         "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-            
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "check_backyard_camera",
-                    "description": "Check the backyard/garden camera using AI vision + facial recognition. Use for: 'check the backyard', 'what's in the garden', 'is the dog outside'.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-            
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "check_driveway_camera",
-                    "description": "Check the driveway camera using AI vision + facial recognition. Use for: 'check the driveway', 'is there a car in the driveway', 'who's in the driveway'.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
+                        "properties": {
+                            "camera": {
+                                "type": "string",
+                                "description": f"The camera to check. Available options: {camera_keys}",
+                                "enum": list(self.camera_friendly_names.keys())
+                            },
+                            "query": {
+                                "type": "string",
+                                "description": "Optional specific question about what to look for on the camera (e.g., 'is there a package?', 'is anyone there?')"
+                            }
+                        },
+                        "required": ["camera"]
                     }
                 }
             })
@@ -3032,20 +3039,23 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": f"Failed to control music: {str(err)}"}
         
         # =========================================================================
-        # CAMERA CHECK HANDLERS (via vllm_video integration)
+        # CAMERA CHECK HANDLERS (via ha_video_vision integration)
         # =========================================================================
-        elif tool_name == "check_outdoor_cameras":
-            # Check all 3 outdoor cameras at once via vllm_video integration
-            cameras = ["driveway", "porch", "backyard"]
+        elif tool_name == "check_all_cameras":
+            # Check all configured cameras at once via ha_video_vision integration
+            if not self.camera_friendly_names:
+                return {"error": "No cameras configured. Add cameras in Settings → PolyVoice → Entity Configuration."}
+
+            cameras = list(self.camera_friendly_names.keys())
             results = []
             all_people = []
             successful_checks = 0
             failed_checks = 0
-            
+
             for cam in cameras:
-                friendly_name = CAMERA_FRIENDLY_NAMES.get(cam, cam)
+                friendly_name = self.camera_friendly_names.get(cam, cam)
                 try:
-                    # Call vllm_video integration service
+                    # Call ha_video_vision integration service
                     result = await self.hass.services.async_call(
                         "ha_video_vision",
                         "analyze_camera",
@@ -3053,12 +3063,12 @@ class LMStudioConversationEntity(ConversationEntity):
                         blocking=True,
                         return_response=True,
                     )
-                    
+
                     if result and result.get("success"):
                         successful_checks += 1
                         analysis = result.get('description', 'No activity detected')
                         identified = result.get("identified_people", [])
-                        
+
                         if identified:
                             people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
                             results.append(f"**{friendly_name}** (person detected: {people_str}): {analysis}")
@@ -3075,46 +3085,54 @@ class LMStudioConversationEntity(ConversationEntity):
                     failed_checks += 1
                     results.append(f"**{friendly_name}**: Error accessing camera feed")
                     _LOGGER.error("Error checking %s: %s", cam, e)
-            
+
             # Build summary with status header
             status_line = f"Checked {successful_checks}/{len(cameras)} cameras successfully."
             if failed_checks > 0:
                 status_line += f" ({failed_checks} unavailable)"
-            
+
             camera_details = "\n".join(results)
-            
+
             if all_people:
                 people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in all_people])
                 summary = f"{status_line}\n\n**People recognized across cameras**: {people_str}\n\n{camera_details}"
             else:
                 summary = f"{status_line}\n\n{camera_details}"
-            
+
             return {"summary": summary, "cameras_checked": cameras, "successful": successful_checks, "failed": failed_checks, "people_found": all_people}
-        
-        elif tool_name in ("check_porch_camera", "check_backyard_camera", "check_driveway_camera"):
-            # Determine which camera to check
-            camera_map = {
-                "check_porch_camera": "porch",
-                "check_backyard_camera": "backyard", 
-                "check_driveway_camera": "driveway",
-            }
-            camera_key = camera_map.get(tool_name, "porch")
-            friendly_name = CAMERA_FRIENDLY_NAMES.get(camera_key, camera_key)
-            
+
+        elif tool_name == "check_camera":
+            # Check a specific camera via ha_video_vision integration
+            camera_key = arguments.get("camera", "")
+            user_camera_query = arguments.get("query", "")
+
+            if not camera_key:
+                return {"error": "No camera specified. Please provide a camera name."}
+
+            if not self.camera_friendly_names:
+                return {"error": "No cameras configured. Add cameras in Settings → PolyVoice → Entity Configuration."}
+
+            # Validate camera exists in configured cameras
+            if camera_key not in self.camera_friendly_names:
+                available = ", ".join(self.camera_friendly_names.keys())
+                return {"error": f"Camera '{camera_key}' not found. Available cameras: {available}"}
+
+            friendly_name = self.camera_friendly_names.get(camera_key, camera_key)
+
             try:
-                # Call vllm_video integration service
+                # Call ha_video_vision integration service
+                service_data = {"camera": camera_key, "duration": 3}
+                if user_camera_query:
+                    service_data["user_query"] = user_camera_query
+
                 result = await self.hass.services.async_call(
                     "ha_video_vision",
                     "analyze_camera",
-                    {
-                        "camera": camera_key,
-                        "duration": 3,
-                        "user_query": user_query,
-                    },
+                    service_data,
                     blocking=True,
                     return_response=True,
                 )
-                
+
                 if not result or not result.get("success"):
                     error_msg = result.get('error', 'Unknown error') if result else 'Service unavailable'
                     return {
@@ -3122,11 +3140,11 @@ class LMStudioConversationEntity(ConversationEntity):
                         "status": "unavailable",
                         "error": f"Could not access {friendly_name} camera: {error_msg}"
                     }
-                
+
                 # Build response with identification
                 identified = result.get("identified_people", [])
                 analysis = result.get("description", "Unable to analyze camera feed")
-                
+
                 if identified:
                     people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
                     return {
@@ -3143,7 +3161,7 @@ class LMStudioConversationEntity(ConversationEntity):
                         "person_detected": False,
                         "description": analysis
                     }
-                
+
             except Exception as err:
                 _LOGGER.error("Error checking camera %s: %s", camera_key, err, exc_info=True)
                 return {
@@ -3337,3 +3355,64 @@ class LMStudioConversationEntity(ConversationEntity):
         except Exception as err:
             _LOGGER.error("Error calling Google Places API: %s", err, exc_info=True)
             return {"error": f"Failed to search for places: {str(err)}"}
+
+    async def _check_single_camera(self, camera_key: str, user_query: str = "") -> dict[str, Any]:
+        """Check a single camera and return the analysis result.
+
+        This method is used by the facial_recognition service for automation triggers.
+
+        Args:
+            camera_key: The camera key (e.g., "porch", "driveway")
+            user_query: Optional query about what to look for
+
+        Returns:
+            Dict with analysis results including identified_people and analysis text
+        """
+        friendly_name = self.camera_friendly_names.get(
+            camera_key,
+            camera_key.replace("_", " ").title()
+        )
+
+        try:
+            service_data = {"camera": camera_key, "duration": 3}
+            if user_query:
+                service_data["user_query"] = user_query
+
+            result = await self.hass.services.async_call(
+                "ha_video_vision",
+                "analyze_camera",
+                service_data,
+                blocking=True,
+                return_response=True,
+            )
+
+            if not result or not result.get("success"):
+                error_msg = result.get('error', 'Unknown error') if result else 'Service unavailable'
+                return {
+                    "location": friendly_name,
+                    "status": "unavailable",
+                    "error": f"Could not access {friendly_name} camera: {error_msg}",
+                    "identified_people": [],
+                    "analysis": ""
+                }
+
+            identified = result.get("identified_people", [])
+            analysis = result.get("description", "Unable to analyze camera feed")
+
+            return {
+                "location": friendly_name,
+                "status": "checked",
+                "person_detected": len(identified) > 0,
+                "identified_people": identified,
+                "analysis": analysis
+            }
+
+        except Exception as err:
+            _LOGGER.error("Error checking camera %s: %s", camera_key, err, exc_info=True)
+            return {
+                "location": friendly_name,
+                "status": "error",
+                "error": f"Failed to check {friendly_name} camera: {str(err)}",
+                "identified_people": [],
+                "analysis": ""
+            }

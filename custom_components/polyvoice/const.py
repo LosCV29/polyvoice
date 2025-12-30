@@ -138,6 +138,19 @@ CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_NOTIFICATION_SERVICE: Final = "notification_service"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
 
+# Default camera friendly names mapping (camera_key -> display_name)
+# Users can configure their own cameras via CONF_CAMERA_ENTITIES
+DEFAULT_CAMERA_FRIENDLY_NAMES: Final = {
+    "driveway": "Driveway",
+    "porch": "Front Porch",
+    "front_door": "Front Door",
+    "backyard": "Backyard",
+    "garage": "Garage",
+    "side_yard": "Side Yard",
+    "garden": "Garden",
+    "front_yard": "Front Yard",
+}
+
 DEFAULT_THERMOSTAT_ENTITY: Final = ""
 DEFAULT_CALENDAR_ENTITIES: Final = ""
 DEFAULT_MUSIC_PLAYERS: Final = ""
@@ -211,7 +224,7 @@ When using tools, respond DIRECTLY with the result. Do NOT say "I'll look this u
 GENERAL GUIDELINES:
 - For weather questions, call get_weather_forecast
 - For music control, use control_music with appropriate action
-- For camera checks, use the camera check tools
+- For camera checks, use check_camera for a specific camera or check_all_cameras for all
 - For thermostat control, use control_thermostat
 - For device status, use check_device_status
 - For sports questions, ALWAYS call get_sports_info (never answer from memory)
