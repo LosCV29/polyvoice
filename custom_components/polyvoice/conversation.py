@@ -802,14 +802,15 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": "Control music playback via Music Assistant. Use for: 'play music', 'shuffle my playlist', 'play jazz', 'pause music', 'next song', 'play [artist/song/playlist/genre]'. Supports voice-controlled playback across rooms.",
+                    "description": "Control music playback via Music Assistant. Use for: 'play music', 'shuffle my playlist', 'play jazz', 'pause music', 'next song', 'transfer to kitchen', 'what's playing'. Supports voice-controlled playback across rooms.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["play", "pause", "stop", "next", "previous", "shuffle", "volume"], "description": "Action to perform"},
+                            "action": {"type": "string", "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "transfer", "what_playing", "volume"], "description": "Action to perform. Use 'transfer' to move music to another room."},
                             "query": {"type": "string", "description": "What to play: artist, song, album, playlist, or genre (e.g., 'jazz', 'Beatles', 'workout playlist')"},
-                            "target_area": {"type": "string", "description": "Room or area (e.g., 'living room', 'kitchen', 'everywhere'). Defaults to main speaker."},
-                            "volume": {"type": "integer", "description": "Volume level 0-100 (only for 'volume' action)"}
+                            "room": {"type": "string", "description": "Room or area for playback or transfer target (e.g., 'living room', 'kitchen', 'office', 'everywhere'). Required for 'transfer' action."},
+                            "volume": {"type": "integer", "description": "Volume level 0-100 (only for 'volume' action)"},
+                            "shuffle": {"type": "boolean", "description": "Enable shuffle mode when playing"}
                         },
                         "required": ["action"]
                     }
@@ -3038,22 +3039,42 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"message": "No music is currently playing"}
                 
                 elif action == "transfer":
-                    # Find currently playing player
+                    if not room:
+                        return {"error": "Please specify which room to transfer to (e.g., 'transfer to kitchen')"}
+
+                    # Find currently playing player (source)
                     source_player = None
                     for player in all_players:
                         state = self.hass.states.get(player)
-                        if state and state.state in ("playing", "paused"):
+                        if state and state.state == "playing":
                             source_player = player
                             break
+
+                    # If nothing playing, check for paused
+                    if not source_player:
+                        for player in all_players:
+                            state = self.hass.states.get(player)
+                            if state and state.state == "paused":
+                                source_player = player
+                                break
 
                     if not source_player:
                         return {"error": "No music is currently playing to transfer"}
 
-                    # Transfer to target room
-                    target_player = target_players[0]
+                    # Find target player by room name
+                    target_player = find_player_by_room(room)
+                    if not target_player:
+                        return {"error": f"Could not find a speaker in '{room}'. Available rooms: {', '.join([get_room_from_player(p) for p in all_players])}"}
 
+                    if source_player == target_player:
+                        return {"message": f"Music is already playing in {room}"}
+
+                    _LOGGER.info("Transferring music from %s to %s", source_player, target_player)
+
+                    # Transfer queue from source to target
                     await self.hass.services.async_call(
                         "music_assistant", "transfer_queue",
+                        {"source_player": source_player},
                         target={"entity_id": target_player},
                         blocking=True
                     )
@@ -3066,7 +3087,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             blocking=True
                         )
 
-                    room_text = get_room_from_player(target_player) if room else "the speaker"
+                    room_text = get_room_from_player(target_player)
                     return {"status": "transferred", "message": f"Music transferred to {room_text}"}
                 
                 else:
