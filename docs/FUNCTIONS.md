@@ -113,7 +113,7 @@ everywhere:media_player.whole_home_group
 
 ### `check_porch_camera`, `check_driveway_camera`, `check_backyard_camera`
 
-**Requires:** [ha_video_vision](https://github.com/YOUR_USERNAME/ha-video-vision) integration
+**Requires:** [ha_video_vision](https://github.com/LosCV29/ha-video-vision) integration
 
 **Example prompts:**
 - "Check the front door"

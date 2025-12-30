@@ -50,7 +50,7 @@
 ### Installation (HACS)
 
 1. Open HACS → Integrations → ⋮ → Custom Repositories
-2. Add: `https://github.com/YOUR_USERNAME/polyvoice`
+2. Add: `https://github.com/LosCV29/polyvoice`
 3. Install "PolyVoice"
 4. Restart Home Assistant
 5. Settings → Devices & Services → Add Integration → "PolyVoice"
@@ -157,7 +157,7 @@ garage:cover.garage_door
 
 For AI camera vision, install the companion:
 
-### [HA Video Vision](https://github.com/YOUR_USERNAME/ha-video-vision)
+### [HA Video Vision](https://github.com/LosCV29/ha-video-vision)
 
 - Real **video analysis** (not snapshots!)
 - **Facial recognition** — "Who's at the door?"
@@ -204,7 +204,7 @@ For AI camera vision, install the companion:
 
 ## 🤝 Works Great With
 
-- **[HA Video Vision](https://github.com/YOUR_USERNAME/ha-video-vision)** — AI cameras
+- **[HA Video Vision](https://github.com/LosCV29/ha-video-vision)** — AI cameras
 - **[Music Assistant](https://music-assistant.io/)** — Multi-room audio
 - **ESPHome Voice** — Local wake word
 - **Wyoming** — Voice pipelines
