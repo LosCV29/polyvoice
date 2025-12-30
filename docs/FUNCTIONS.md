@@ -9,7 +9,7 @@ PolyVoice includes 15+ built-in functions that can be toggled on/off individuall
 | `get_weather_forecast` | Weather conditions + forecast | OpenWeatherMap API |
 | `get_calendar_events` | Upcoming calendar events | Calendar entities |
 | `control_music` | Play, pause, skip, transfer | Music players |
-| `check_*_camera` | AI camera analysis | ha_video_vision |
+| `check_camera`, `quick_camera_check` | AI camera analysis | ha_video_vision |
 | `get_sports_info` | Live scores & schedules | None |
 | `get_news` | Headlines by category | NewsAPI key |
 | `find_nearby_places` | Location search | Google Places API |
@@ -111,14 +111,20 @@ everywhere:media_player.whole_home_group
 
 ## Camera Vision
 
-### `check_porch_camera`, `check_driveway_camera`, `check_backyard_camera`
+### `check_camera` and `quick_camera_check`
 
 **Requires:** [ha_video_vision](https://github.com/LosCV29/ha-video-vision) integration
 
+| Tool | Purpose |
+|------|---------|
+| `check_camera` | Detailed AI analysis + person identification |
+| `quick_camera_check` | Fast presence check + one sentence response |
+
 **Example prompts:**
-- "Check the front door"
-- "Who's at the driveway?"
-- "What's happening in the backyard?"
+- "Check the front door camera" → uses `check_camera`
+- "What's happening in the backyard?" → uses `check_camera`
+- "Is there anyone in the garage?" → uses `quick_camera_check`
+- "Anyone at the driveway?" → uses `quick_camera_check`
 
 **Returns:**
 - AI description of the scene

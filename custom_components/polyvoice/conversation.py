@@ -560,7 +560,7 @@ class LMStudioConversationEntity(ConversationEntity):
             else:
                 camera_key = entity_id.replace("_camera", "")
             # Get friendly name from defaults or generate from key
-            friendly_name = DEFAULT_CAMERA_FRIENDLY_NAMES.get(
+            friendly_name = CAMERA_FRIENDLY_NAMES.get(
                 camera_key,
                 camera_key.replace("_", " ").title()
             )
