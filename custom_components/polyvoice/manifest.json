@@ -1,12 +1,12 @@
 {
   "domain": "polyvoice",
   "name": "PolyVoice",
-  "codeowners": ["@carlosmunoz"],
+  "codeowners": ["@LosCV29"],
   "config_flow": true,
   "dependencies": ["conversation"],
-  "documentation": "https://github.com/carlosmunoz/polyvoice",
-  "issue_tracker": "https://github.com/carlosmunoz/polyvoice/issues",
+  "documentation": "https://github.com/LosCV29/polyvoice",
+  "issue_tracker": "https://github.com/LosCV29/polyvoice/issues",
   "iot_class": "cloud_polling",
   "requirements": ["openai>=1.0.0"],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
