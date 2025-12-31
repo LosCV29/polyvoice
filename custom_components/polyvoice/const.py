@@ -139,6 +139,14 @@ CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_NOTIFICATION_SERVICE: Final = "notification_service"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
 
+# Thermostat settings - user-configurable temperature range and step
+CONF_THERMOSTAT_MIN_TEMP: Final = "thermostat_min_temp"
+CONF_THERMOSTAT_MAX_TEMP: Final = "thermostat_max_temp"
+CONF_THERMOSTAT_TEMP_STEP: Final = "thermostat_temp_step"
+
+# Event names - user-configurable
+CONF_FACIAL_RECOGNITION_EVENT: Final = "facial_recognition_event"
+
 # Default camera friendly names mapping (voice aliases -> display_name)
 # Supports multiple spellings/variations for voice commands
 # Users configure actual cameras via CONF_CAMERA_ENTITIES; ha_video_vision handles resolution
@@ -194,6 +202,14 @@ DEFAULT_LAST_ACTIVE_SPEAKER: Final = ""  # input_text helper entity_id
 DEFAULT_DEVICE_ALIASES: Final = ""
 DEFAULT_NOTIFICATION_SERVICE: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
+
+# Thermostat defaults (Fahrenheit)
+DEFAULT_THERMOSTAT_MIN_TEMP: Final = 60
+DEFAULT_THERMOSTAT_MAX_TEMP: Final = 85
+DEFAULT_THERMOSTAT_TEMP_STEP: Final = 2
+
+# Event name defaults
+DEFAULT_FACIAL_RECOGNITION_EVENT: Final = "polyvoice_facial_recognition"
 
 # =============================================================================
 # NATIVE INTENTS

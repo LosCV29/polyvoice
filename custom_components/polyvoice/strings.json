@@ -80,7 +80,12 @@
           "camera_entities": "Cameras",
           "default_music_player": "Default Music Player",
           "music_players": "Music Players by Room (room:entity_id, one per line)",
-          "notification_service": "Notification Service (e.g., mobile_app_your_phone)"
+          "notification_service": "Notification Service (e.g., mobile_app_your_phone)",
+          "last_active_speaker": "Last Active Speaker Helper (input_text)",
+          "thermostat_min_temp": "Thermostat Minimum Temperature",
+          "thermostat_max_temp": "Thermostat Maximum Temperature",
+          "thermostat_temp_step": "Temperature Adjustment Step",
+          "facial_recognition_event": "Facial Recognition Event Name"
         }
       },
       "api_keys": {

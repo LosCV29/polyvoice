@@ -76,6 +76,12 @@ from .const import (
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
+    # Thermostat settings
+    CONF_THERMOSTAT_MIN_TEMP,
+    CONF_THERMOSTAT_MAX_TEMP,
+    CONF_THERMOSTAT_TEMP_STEP,
+    # Event names
+    CONF_FACIAL_RECOGNITION_EVENT,
     # Defaults
     DEFAULT_USE_NATIVE_INTENTS,
     DEFAULT_EXCLUDED_INTENTS,
@@ -108,6 +114,12 @@ from .const import (
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_NOTIFICATION_SERVICE,
     DEFAULT_CAMERA_ENTITIES,
+    # Thermostat defaults
+    DEFAULT_THERMOSTAT_MIN_TEMP,
+    DEFAULT_THERMOSTAT_MAX_TEMP,
+    DEFAULT_THERMOSTAT_TEMP_STEP,
+    # Event defaults
+    DEFAULT_FACIAL_RECOGNITION_EVENT,
     ALL_NATIVE_INTENTS,
 )
 
@@ -611,6 +623,50 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_NOTIFICATION_SERVICE,
                         default=current.get(CONF_NOTIFICATION_SERVICE, DEFAULT_NOTIFICATION_SERVICE),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_THERMOSTAT_MIN_TEMP,
+                        default=current.get(CONF_THERMOSTAT_MIN_TEMP, DEFAULT_THERMOSTAT_MIN_TEMP),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=32,
+                            max=100,
+                            step=1,
+                            unit_of_measurement="°F",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_THERMOSTAT_MAX_TEMP,
+                        default=current.get(CONF_THERMOSTAT_MAX_TEMP, DEFAULT_THERMOSTAT_MAX_TEMP),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=32,
+                            max=100,
+                            step=1,
+                            unit_of_measurement="°F",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_THERMOSTAT_TEMP_STEP,
+                        default=current.get(CONF_THERMOSTAT_TEMP_STEP, DEFAULT_THERMOSTAT_TEMP_STEP),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=10,
+                            step=1,
+                            unit_of_measurement="°F",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_FACIAL_RECOGNITION_EVENT,
+                        default=current.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT),
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,

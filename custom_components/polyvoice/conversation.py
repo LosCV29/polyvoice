@@ -102,6 +102,16 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     CAMERA_FRIENDLY_NAMES,
     ALL_NATIVE_INTENTS,
+    # Thermostat settings
+    CONF_THERMOSTAT_MIN_TEMP,
+    CONF_THERMOSTAT_MAX_TEMP,
+    CONF_THERMOSTAT_TEMP_STEP,
+    DEFAULT_THERMOSTAT_MIN_TEMP,
+    DEFAULT_THERMOSTAT_MAX_TEMP,
+    DEFAULT_THERMOSTAT_TEMP_STEP,
+    # Event names
+    CONF_FACIAL_RECOGNITION_EVENT,
+    DEFAULT_FACIAL_RECOGNITION_EVENT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -364,8 +374,9 @@ async def async_setup_entry(
                     else:
                         _LOGGER.debug("No notification service configured")
                 
-                # Fire event for other automations
-                hass.bus.async_fire("lm_studio_facial_recognition", {
+                # Fire event for other automations (use configurable event name)
+                event_name = getattr(stored_agent, 'facial_recognition_event', DEFAULT_FACIAL_RECOGNITION_EVENT)
+                hass.bus.async_fire(event_name, {
                     "camera": camera,
                     "identified_people": result.get("identified_people", []),
                     "analysis": result.get("analysis", ""),
@@ -541,6 +552,14 @@ class LMStudioConversationEntity(ConversationEntity):
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, "")
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
+
+        # Thermostat settings (user-configurable limits and step)
+        self.thermostat_min_temp = int(config.get(CONF_THERMOSTAT_MIN_TEMP, DEFAULT_THERMOSTAT_MIN_TEMP))
+        self.thermostat_max_temp = int(config.get(CONF_THERMOSTAT_MAX_TEMP, DEFAULT_THERMOSTAT_MAX_TEMP))
+        self.thermostat_temp_step = int(config.get(CONF_THERMOSTAT_TEMP_STEP, DEFAULT_THERMOSTAT_TEMP_STEP))
+
+        # Event names (user-configurable)
+        self.facial_recognition_event = config.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT)
 
         # Build camera friendly names mapping from configured camera entities
         # camera.front_porch -> key: "front_porch", friendly: "Front Porch"
@@ -2467,12 +2486,12 @@ class LMStudioConversationEntity(ConversationEntity):
                         return {"error": "Please specify a temperature to set"}
                     new_temp = int(temp_arg)
                 elif action == "raise":
-                    new_temp = int(current_target + 2)
+                    new_temp = int(current_target + self.thermostat_temp_step)
                 else:  # lower
-                    new_temp = int(current_target - 2)
-                
-                # Clamp to reasonable range (60-85°F)
-                new_temp = max(60, min(85, new_temp))
+                    new_temp = int(current_target - self.thermostat_temp_step)
+
+                # Clamp to user-configurable range
+                new_temp = max(self.thermostat_min_temp, min(self.thermostat_max_temp, new_temp))
                 
                 _LOGGER.info("Thermostat control: action=%s, current=%s, new=%s", action, current_target, new_temp)
                 
