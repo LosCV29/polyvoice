@@ -279,7 +279,7 @@ GENERAL GUIDELINES:
 - For restaurant recommendations, use get_restaurant_recommendations
 - For news, use get_news
 - For calendar events, use get_calendar_events
-- For ANY music request (play, play music, put on, shuffle, skip, next, previous, pause, resume, stop, transfer), ALWAYS call control_music - never respond without calling it
+- For music control (play, skip, pause, etc.), let native Home Assistant handle it
 - For native HA control (lights, locks), let native HA Assist handle those
 """
 
