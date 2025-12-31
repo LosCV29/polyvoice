@@ -67,7 +67,8 @@
           "enable_restaurants": "Restaurant Recommendations (Yelp)",
           "enable_thermostat": "Thermostat Control",
           "enable_device_status": "Device Status Checks",
-          "enable_wikipedia": "Wikipedia & Age Lookup"
+          "enable_wikipedia": "Wikipedia & Age Lookup",
+          "enable_music": "Music Control (Music Assistant)"
         }
       },
       "entities": {
