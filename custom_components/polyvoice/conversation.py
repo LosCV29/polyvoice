@@ -919,25 +919,32 @@ class LMStudioConversationEntity(ConversationEntity):
     async def _handle_simple_music(
         self, text: str, language: str, conversation_id: str
     ) -> conversation.ConversationResult | None:
-        """Simple music commands → active player from helper."""
+        """Simple music commands → find playing player and control it."""
 
         _LOGGER.warning("=== _handle_simple_music CALLED === text='%s'", text)
 
-        # Get active player: helper → playing → default
-        helper = self.last_active_speaker or "input_text.current_music_player"
-        state = self.hass.states.get(helper)
-        target = state.state if state and state.state.startswith("media_player.") else None
+        # Find the currently PLAYING player first (like the working sample)
+        all_players = self.music_players or []
+        playing_player = None
 
-        if not target:
-            for p in (self.music_players or []):
-                if self.hass.states.get(p) and self.hass.states.get(p).state == "playing":
-                    target = p
-                    break
+        for player in all_players:
+            state = self.hass.states.get(player)
+            _LOGGER.warning("=== CHECKING PLAYER === %s state=%s", player, state.state if state else "None")
+            if state and state.state == "playing":
+                playing_player = player
+                _LOGGER.warning("=== FOUND PLAYING === %s", player)
+                break
 
-        if not target:
-            target = self.default_music_player or (self.music_players[0] if self.music_players else None)
+        # Fallback to helper if nothing actively playing
+        if not playing_player:
+            helper = self.last_active_speaker or "input_text.current_music_player"
+            helper_state = self.hass.states.get(helper)
+            if helper_state and helper_state.state and helper_state.state.startswith("media_player."):
+                playing_player = helper_state.state
+                _LOGGER.warning("=== USING HELPER === %s", playing_player)
 
-        if not target:
+        if not playing_player:
+            _LOGGER.warning("=== NO PLAYER FOUND ===")
             return None
 
         def respond(msg):
@@ -945,35 +952,57 @@ class LMStudioConversationEntity(ConversationEntity):
             r.async_set_speech(msg)
             return conversation.ConversationResult(response=r, conversation_id=conversation_id)
 
-        # SKIP - if "skip" or "next" anywhere in text
-        if 'skip' in text or 'next' in text:
-            _LOGGER.warning("=== SKIP === %s", target)
-            await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": target}, blocking=True)
-            return respond("Skipped")
+        try:
+            # SKIP
+            if 'skip' in text or 'next' in text:
+                _LOGGER.warning("=== CALLING media_next_track === entity_id=%s", playing_player)
+                await self.hass.services.async_call(
+                    "media_player", "media_next_track",
+                    {"entity_id": playing_player},
+                    blocking=True
+                )
+                _LOGGER.warning("=== SKIP SERVICE CALL COMPLETE ===")
+                return respond("Skipped")
 
-        # PREVIOUS
-        if 'previous' in text or 'go back' in text:
-            _LOGGER.warning("=== PREVIOUS === %s", target)
-            await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": target}, blocking=True)
-            return respond("Previous")
+            # PREVIOUS
+            if 'previous' in text or 'go back' in text:
+                await self.hass.services.async_call(
+                    "media_player", "media_previous_track",
+                    {"entity_id": playing_player},
+                    blocking=True
+                )
+                return respond("Previous")
 
-        # PAUSE
-        if 'pause' in text:
-            _LOGGER.warning("=== PAUSE === %s", target)
-            await self.hass.services.async_call("media_player", "media_pause", {"entity_id": target}, blocking=True)
-            return respond("Paused")
+            # PAUSE
+            if 'pause' in text:
+                await self.hass.services.async_call(
+                    "media_player", "media_pause",
+                    {"entity_id": playing_player},
+                    blocking=True
+                )
+                return respond("Paused")
 
-        # RESUME
-        if 'resume' in text or 'unpause' in text:
-            _LOGGER.warning("=== RESUME === %s", target)
-            await self.hass.services.async_call("media_player", "media_play", {"entity_id": target}, blocking=True)
-            return respond("Resumed")
+            # RESUME
+            if 'resume' in text or 'unpause' in text:
+                await self.hass.services.async_call(
+                    "media_player", "media_play",
+                    {"entity_id": playing_player},
+                    blocking=True
+                )
+                return respond("Resumed")
 
-        # STOP (exact or with music/playing)
-        if text == 'stop' or 'stop music' in text or 'stop playing' in text:
-            _LOGGER.warning("=== STOP === %s", target)
-            await self.hass.services.async_call("media_player", "media_stop", {"entity_id": target}, blocking=True)
-            return respond("Stopped")
+            # STOP
+            if text == 'stop' or 'stop music' in text or 'stop playing' in text:
+                await self.hass.services.async_call(
+                    "media_player", "media_stop",
+                    {"entity_id": playing_player},
+                    blocking=True
+                )
+                return respond("Stopped")
+
+        except Exception as e:
+            _LOGGER.error("=== SIMPLE MUSIC ERROR === %s", e, exc_info=True)
+            return respond(f"Error: {e}")
 
         return None
 
