@@ -924,15 +924,24 @@ class LMStudioConversationEntity(ConversationEntity):
         
         # Store original query for tools to access (for reliable device name extraction)
         self._current_user_query = user_input.text
-        
+
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        if self.use_native_intents:
+        # FAST PATH: Skip native intents for music commands - go straight to LLM
+        text_lower = user_input.text.lower()
+        is_music = any(kw in text_lower for kw in [
+            'play', 'pause', 'resume', 'stop', 'skip', 'next', 'previous',
+            'shuffle', 'music', 'song', 'track', 'album', 'artist', 'playlist'
+        ])
+
+        if self.use_native_intents and not is_music:
             native_result = await self._try_native_intent(user_input, conversation_id)
             if native_result is not None:
                 _LOGGER.info("Handled by native intent (not LLM): %s", user_input.text)
                 return native_result
-        
+        elif is_music:
+            _LOGGER.info("=== MUSIC DETECTED === Skipping native intents, going to LLM")
+
         # Use pre-built tools (cached at config load for speed!)
         tools = self._tools
 
