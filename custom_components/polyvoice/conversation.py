@@ -3018,26 +3018,42 @@ class LMStudioConversationEntity(ConversationEntity):
             action = arguments.get("action", "").lower()
             query = arguments.get("query", "")
             media_type = arguments.get("media_type", "artist")
-            room = arguments.get("room", "").lower()
+            room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
+
+            _LOGGER.info("=== MUSIC CONTROL START ===")
+            _LOGGER.info("room_player_mapping config: %s", self.room_player_mapping)
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
 
-            if not all_players:
-                _LOGGER.error("No players configured in room_player_mapping!")
-                return {"error": "No music players configured. Add room:player mappings in PolyVoice settings."}
+            _LOGGER.info("all_players list: %s", all_players)
 
-            # Helper: find currently playing/paused player
+            if not all_players:
+                _LOGGER.error("No players configured! room_player_mapping is empty")
+                return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping and add entries like: living room: media_player.your_player"}
+
+            # Helper: find currently playing player (prioritize "playing" state)
             def find_active_player():
-                _LOGGER.info("Looking for active player in: %s", all_players)
+                _LOGGER.info("Scanning all players for active state...")
+                # First pass: find "playing"
                 for pid in all_players:
                     state = self.hass.states.get(pid)
                     if state:
-                        _LOGGER.info("Player %s state: %s", pid, state.state)
-                        if state.state in ("playing", "paused", "buffering", "on"):
+                        _LOGGER.info("  Player %s → state: '%s'", pid, state.state)
+                        if state.state == "playing":
+                            _LOGGER.info("  → FOUND PLAYING: %s", pid)
                             return pid
-                return None
+                    else:
+                        _LOGGER.warning("  Player %s → NO STATE (entity doesn't exist?)", pid)
+                # Second pass: find "paused" or "buffering"
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state and state.state in ("paused", "buffering"):
+                        _LOGGER.info("  → FOUND PAUSED/BUFFERING: %s", pid)
+                        return pid
+                _LOGGER.info("  → No active player found, returning first player as fallback")
+                return all_players[0] if all_players else None
 
             # Helper: get room name from entity_id
             def get_room_name(entity_id):
