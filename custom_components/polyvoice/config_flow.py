@@ -116,6 +116,9 @@ from .const import (
     DEFAULT_THERMOSTAT_MAX_TEMP,
     DEFAULT_THERMOSTAT_TEMP_STEP,
     DEFAULT_THERMOSTAT_USE_CELSIUS,
+    DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
+    DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
+    DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
     # Event defaults
     DEFAULT_FACIAL_RECOGNITION_EVENT,
     ALL_NATIVE_INTENTS,
@@ -557,6 +560,48 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         elif not current_cameras:
             current_cameras = []
 
+        # Determine if using Celsius and set appropriate defaults/ranges
+        use_celsius = current.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS)
+        if use_celsius:
+            temp_unit = "°C"
+            temp_min_range = 0
+            temp_max_range = 50
+            default_min = DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS
+            default_max = DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS
+            default_step = DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS
+        else:
+            temp_unit = "°F"
+            temp_min_range = 32
+            temp_max_range = 100
+            default_min = DEFAULT_THERMOSTAT_MIN_TEMP
+            default_max = DEFAULT_THERMOSTAT_MAX_TEMP
+            default_step = DEFAULT_THERMOSTAT_TEMP_STEP
+
+        # Get current values, using appropriate defaults if not set or if switching units
+        current_min = current.get(CONF_THERMOSTAT_MIN_TEMP)
+        current_max = current.get(CONF_THERMOSTAT_MAX_TEMP)
+        current_step = current.get(CONF_THERMOSTAT_TEMP_STEP)
+
+        # If values look like wrong unit (e.g., 60-85 with Celsius enabled), use unit defaults
+        if use_celsius:
+            if current_min is not None and current_min > 40:  # Likely Fahrenheit value
+                current_min = default_min
+            if current_max is not None and current_max > 50:  # Likely Fahrenheit value
+                current_max = default_max
+        else:
+            if current_min is not None and current_min < 32:  # Likely Celsius value
+                current_min = default_min
+            if current_max is not None and current_max < 50:  # Likely Celsius value
+                current_max = default_max
+
+        # Use defaults if not set
+        if current_min is None:
+            current_min = default_min
+        if current_max is None:
+            current_max = default_max
+        if current_step is None:
+            current_step = default_step
+
         return self.async_show_form(
             step_id="entities",
             data_schema=vol.Schema(
@@ -572,7 +617,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Optional(
                         CONF_THERMOSTAT_USE_CELSIUS,
-                        default=current.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS),
+                        default=use_celsius,
                     ): cv.boolean,
                     vol.Optional(
                         CONF_CALENDAR_ENTITIES,
@@ -620,37 +665,37 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Optional(
                         CONF_THERMOSTAT_MIN_TEMP,
-                        default=current.get(CONF_THERMOSTAT_MIN_TEMP, DEFAULT_THERMOSTAT_MIN_TEMP),
+                        default=current_min,
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
-                            min=32,
-                            max=100,
+                            min=temp_min_range,
+                            max=temp_max_range,
                             step=1,
-                            unit_of_measurement="°F",
+                            unit_of_measurement=temp_unit,
                             mode=selector.NumberSelectorMode.BOX,
                         )
                     ),
                     vol.Optional(
                         CONF_THERMOSTAT_MAX_TEMP,
-                        default=current.get(CONF_THERMOSTAT_MAX_TEMP, DEFAULT_THERMOSTAT_MAX_TEMP),
+                        default=current_max,
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
-                            min=32,
-                            max=100,
+                            min=temp_min_range,
+                            max=temp_max_range,
                             step=1,
-                            unit_of_measurement="°F",
+                            unit_of_measurement=temp_unit,
                             mode=selector.NumberSelectorMode.BOX,
                         )
                     ),
                     vol.Optional(
                         CONF_THERMOSTAT_TEMP_STEP,
-                        default=current.get(CONF_THERMOSTAT_TEMP_STEP, DEFAULT_THERMOSTAT_TEMP_STEP),
+                        default=current_step,
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
                             min=1,
                             max=10,
                             step=1,
-                            unit_of_measurement="°F",
+                            unit_of_measurement=temp_unit,
                             mode=selector.NumberSelectorMode.BOX,
                         )
                     ),

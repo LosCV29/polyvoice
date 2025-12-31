@@ -106,6 +106,9 @@ from .const import (
     DEFAULT_THERMOSTAT_MAX_TEMP,
     DEFAULT_THERMOSTAT_TEMP_STEP,
     DEFAULT_THERMOSTAT_USE_CELSIUS,
+    DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
+    DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
+    DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
     # Event names
     CONF_FACIAL_RECOGNITION_EVENT,
     DEFAULT_FACIAL_RECOGNITION_EVENT,
@@ -536,10 +539,40 @@ class LMStudioConversationEntity(ConversationEntity):
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
         # Thermostat settings (user-configurable limits and step)
-        self.thermostat_min_temp = int(config.get(CONF_THERMOSTAT_MIN_TEMP, DEFAULT_THERMOSTAT_MIN_TEMP))
-        self.thermostat_max_temp = int(config.get(CONF_THERMOSTAT_MAX_TEMP, DEFAULT_THERMOSTAT_MAX_TEMP))
-        self.thermostat_temp_step = int(config.get(CONF_THERMOSTAT_TEMP_STEP, DEFAULT_THERMOSTAT_TEMP_STEP))
+        # First determine unit preference to select appropriate defaults
         self.thermostat_use_celsius = config.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS)
+
+        # Choose defaults based on unit preference
+        if self.thermostat_use_celsius:
+            default_min = DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS
+            default_max = DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS
+            default_step = DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS
+        else:
+            default_min = DEFAULT_THERMOSTAT_MIN_TEMP
+            default_max = DEFAULT_THERMOSTAT_MAX_TEMP
+            default_step = DEFAULT_THERMOSTAT_TEMP_STEP
+
+        # Load configured values, falling back to unit-appropriate defaults
+        configured_min = config.get(CONF_THERMOSTAT_MIN_TEMP)
+        configured_max = config.get(CONF_THERMOSTAT_MAX_TEMP)
+        configured_step = config.get(CONF_THERMOSTAT_TEMP_STEP)
+
+        # Detect and fix values that appear to be in the wrong unit
+        # (e.g., 60-85 stored when user switches to Celsius)
+        if self.thermostat_use_celsius:
+            if configured_min is not None and configured_min > 40:  # Likely Fahrenheit value
+                configured_min = None  # Reset to Celsius default
+            if configured_max is not None and configured_max > 50:  # Likely Fahrenheit value
+                configured_max = None  # Reset to Celsius default
+        else:
+            if configured_min is not None and configured_min < 32:  # Likely Celsius value
+                configured_min = None  # Reset to Fahrenheit default
+            if configured_max is not None and configured_max < 50:  # Likely Celsius value
+                configured_max = None  # Reset to Fahrenheit default
+
+        self.thermostat_min_temp = int(configured_min if configured_min is not None else default_min)
+        self.thermostat_max_temp = int(configured_max if configured_max is not None else default_max)
+        self.thermostat_temp_step = int(configured_step if configured_step is not None else default_step)
 
         # Event names (user-configurable)
         self.facial_recognition_event = config.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT)
