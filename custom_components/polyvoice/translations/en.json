@@ -67,7 +67,8 @@
           "enable_restaurants": "Restaurant Recommendations (Yelp)",
           "enable_thermostat": "Thermostat Control",
           "enable_device_status": "Device Status Checks",
-          "enable_wikipedia": "Wikipedia & Age Lookup"
+          "enable_wikipedia": "Wikipedia & Age Lookup",
+          "enable_music": "Music Control (Music Assistant)"
         }
       },
       "entities": {
@@ -78,7 +79,13 @@
           "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
-          "notification_service": "Notification Service (e.g., mobile_app_your_phone)"
+          "room_player_mapping": "Room to Player Mapping (room: entity_id, one per line)",
+          "last_active_speaker": "Last Active Speaker Helper (input_text)",
+          "notification_service": "Notification Service (e.g., mobile_app_your_phone)",
+          "thermostat_min_temp": "Thermostat Minimum Temperature",
+          "thermostat_max_temp": "Thermostat Maximum Temperature",
+          "thermostat_temp_step": "Temperature Adjustment Step",
+          "facial_recognition_event": "Facial Recognition Event Name"
         }
       },
       "api_keys": {
