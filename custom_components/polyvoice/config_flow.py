@@ -72,6 +72,7 @@ from .const import (
     CONF_CALENDAR_ENTITIES,
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
+    CONF_ROOM_PLAYER_MAPPING,
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
@@ -110,6 +111,7 @@ from .const import (
     DEFAULT_CALENDAR_ENTITIES,
     DEFAULT_MUSIC_PLAYERS,
     DEFAULT_DEFAULT_MUSIC_PLAYER,
+    DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_NOTIFICATION_SERVICE,
@@ -609,6 +611,15 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(
                             domain="media_player",
                             multiple=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_ROOM_PLAYER_MAPPING,
+                        default=current.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                            multiline=True,
                         )
                     ),
                     vol.Optional(

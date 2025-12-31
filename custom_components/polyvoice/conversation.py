@@ -79,6 +79,7 @@ from .const import (
     CONF_CALENDAR_ENTITIES,
     CONF_MUSIC_PLAYERS,
     CONF_DEFAULT_MUSIC_PLAYER,
+    CONF_ROOM_PLAYER_MAPPING,
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
@@ -548,6 +549,9 @@ class LMStudioConversationEntity(ConversationEntity):
                     self.music_players.append(line.strip())
         else:
             self.music_players = []
+
+        # Room to player explicit mapping (e.g., "living room: media_player.chromecast")
+        self.room_player_mapping = parse_entity_config(config.get(CONF_ROOM_PLAYER_MAPPING, ""))
 
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, "")
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
@@ -3014,40 +3018,75 @@ class LMStudioConversationEntity(ConversationEntity):
             if not all_players:
                 return {"error": "No music players configured in PolyVoice settings."}
 
-            # Build room -> player mapping from friendly_name
+            # Build room -> player mapping: EXPLICIT mapping takes priority
             def get_room_name(entity_id: str) -> str:
                 """Get room name from entity's friendly_name."""
                 state = self.hass.states.get(entity_id)
                 if state:
                     fname = state.attributes.get("friendly_name", "").lower()
-                    # "Home Assistant Voice Kitchen Media Player" -> "kitchen"
                     fname = fname.replace("home assistant voice", "").strip()
                     fname = fname.replace("media player", "").strip()
                     fname = fname.replace("speaker", "").strip()
-                    if "pioneer" in fname or "vsx" in fname:
-                        return "living room"
                     if fname:
                         return fname.strip()
-                # Fallback to entity_id
                 return entity_id.replace("media_player.", "").replace("_", " ")
 
-            room_to_player = {get_room_name(p): p for p in all_players}
+            # Start with explicit room mapping (user-configured, highest priority)
+            room_to_player = dict(self.room_player_mapping)
+            _LOGGER.info("Explicit room mapping: %s", room_to_player)
+
+            # Add auto-generated mappings for players NOT already mapped
+            mapped_players = set(room_to_player.values())
+            for p in all_players:
+                if p not in mapped_players:
+                    auto_room = get_room_name(p)
+                    if auto_room not in room_to_player:
+                        room_to_player[auto_room] = p
+
             _LOGGER.info("control_music: action=%s, query='%s', room='%s', shuffle=%s",
                         action, query, room, shuffle)
-            _LOGGER.info("Room mapping: %s", room_to_player)
+            _LOGGER.info("Final room mapping: %s", room_to_player)
 
             # Find target player for the room
             def find_player_for_room(target_room: str) -> str:
                 if not target_room:
                     return default_player
-                # Exact match
-                if target_room in room_to_player:
-                    return room_to_player[target_room]
+                target_room_lower = target_room.lower()
+                # Exact match (case-insensitive)
+                for rname, player in room_to_player.items():
+                    if rname.lower() == target_room_lower:
+                        return player
                 # Partial match
                 for rname, player in room_to_player.items():
-                    if target_room in rname or rname in target_room:
+                    if target_room_lower in rname.lower() or rname.lower() in target_room_lower:
                         return player
                 return default_player
+
+            # Helper to get the last active speaker from the input_text helper
+            def get_last_active_player() -> str | None:
+                if self.last_active_speaker:
+                    state = self.hass.states.get(self.last_active_speaker)
+                    if state and state.state and state.state.startswith("media_player."):
+                        return state.state
+                return None
+
+            # Helper to update the last active speaker
+            async def set_last_active_player(player: str):
+                if self.last_active_speaker and player:
+                    await self.hass.services.async_call(
+                        "input_text", "set_value",
+                        {"entity_id": self.last_active_speaker, "value": player},
+                        blocking=True
+                    )
+                    _LOGGER.info("Updated last active speaker to: %s", player)
+
+            # Helper to find currently playing player (only from configured music_players)
+            def find_playing_player() -> str | None:
+                for player in all_players:
+                    state = self.hass.states.get(player)
+                    if state and state.state == "playing":
+                        return player
+                return None
 
             try:
                 # ===== PLAY ACTION =====
@@ -3085,6 +3124,9 @@ class LMStudioConversationEntity(ConversationEntity):
                         )
                         _LOGGER.info("Skipped to fresh shuffle position")
 
+                    # Update last active speaker helper
+                    await set_last_active_player(target_player)
+
                     room_name = room if room else get_room_name(target_player)
                     msg = f"Shuffling {query}" if shuffle else f"Playing {query}"
                     return {"status": "playing", "message": f"{msg} in the {room_name}"}
@@ -3109,86 +3151,82 @@ class LMStudioConversationEntity(ConversationEntity):
                         blocking=True
                     )
 
+                    # Update last active speaker helper
+                    await set_last_active_player(target_player)
+
                     room_name = get_room_name(target_player)
                     return {"status": "transferred", "message": f"Music transferred to the {room_name}"}
 
                 # ===== SKIP ACTION =====
                 elif action == "skip":
-                    # Find currently playing player
-                    playing_player = None
-                    for player in all_players:
-                        state = self.hass.states.get(player)
-                        if state and state.state == "playing":
-                            playing_player = player
-                            break
-                    if not playing_player:
-                        playing_player = default_player
+                    # Priority: 1. last_active_speaker helper, 2. currently playing, 3. default
+                    target_player = get_last_active_player()
+                    if not target_player:
+                        target_player = find_playing_player()
+                    if not target_player:
+                        target_player = default_player
 
-                    _LOGGER.info("Skipping to next track on %s", playing_player)
+                    _LOGGER.info("Skipping to next track on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_next_track",
-                        {"entity_id": playing_player},
+                        {"entity_id": target_player},
                         blocking=True
                     )
                     return {"status": "skipped", "message": "Skipped to next track"}
 
                 # ===== PREVIOUS ACTION =====
                 elif action == "previous":
-                    playing_player = None
-                    for player in all_players:
-                        state = self.hass.states.get(player)
-                        if state and state.state == "playing":
-                            playing_player = player
-                            break
-                    if not playing_player:
-                        playing_player = default_player
+                    # Priority: 1. last_active_speaker helper, 2. currently playing, 3. default
+                    target_player = get_last_active_player()
+                    if not target_player:
+                        target_player = find_playing_player()
+                    if not target_player:
+                        target_player = default_player
 
-                    _LOGGER.info("Going to previous track on %s", playing_player)
+                    _LOGGER.info("Going to previous track on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_previous_track",
-                        {"entity_id": playing_player},
+                        {"entity_id": target_player},
                         blocking=True
                     )
                     return {"status": "previous", "message": "Playing previous track"}
 
                 # ===== PAUSE ACTION =====
                 elif action == "pause":
-                    playing_player = None
-                    for player in all_players:
-                        state = self.hass.states.get(player)
-                        _LOGGER.debug("Player %s state: %s", player, state.state if state else "None")
-                        if state and state.state in ("playing", "buffering", "on"):
-                            playing_player = player
-                            break
+                    # Priority: 1. last_active_speaker helper, 2. currently playing, 3. default
+                    target_player = get_last_active_player()
+                    if not target_player:
+                        target_player = find_playing_player()
+                    if not target_player:
+                        target_player = default_player
+                        _LOGGER.info("No playing player found, using default: %s", target_player)
 
-                    # Fall back to default player if none found playing
-                    if not playing_player:
-                        playing_player = default_player
-                        _LOGGER.info("No playing player found, using default: %s", playing_player)
-
-                    _LOGGER.info("Pausing music on %s", playing_player)
+                    _LOGGER.info("Pausing music on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_pause",
-                        {"entity_id": playing_player},
+                        {"entity_id": target_player},
                         blocking=True
                     )
                     return {"status": "paused", "message": "Music paused"}
 
                 # ===== RESUME ACTION =====
                 elif action == "resume":
-                    paused_player = None
-                    for player in all_players:
-                        state = self.hass.states.get(player)
-                        if state and state.state == "paused":
-                            paused_player = player
-                            break
-                    if not paused_player:
-                        paused_player = default_player
+                    # Priority: 1. last_active_speaker helper, 2. paused player, 3. default
+                    target_player = get_last_active_player()
+                    if not target_player:
+                        # Find paused player
+                        for player in all_players:
+                            state = self.hass.states.get(player)
+                            if state and state.state == "paused":
+                                target_player = player
+                                break
+                    if not target_player:
+                        target_player = default_player
 
-                    _LOGGER.info("Resuming music on %s", paused_player)
+                    _LOGGER.info("Resuming music on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_play",
-                        {"entity_id": paused_player},
+                        {"entity_id": target_player},
                         blocking=True
                     )
                     return {"status": "resumed", "message": "Music resumed"}
