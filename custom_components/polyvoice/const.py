@@ -105,7 +105,6 @@ DEFAULT_TOP_P: Final = 0.95
 # =============================================================================
 CONF_ENABLE_WEATHER: Final = "enable_weather"
 CONF_ENABLE_CALENDAR: Final = "enable_calendar"
-CONF_ENABLE_MUSIC: Final = "enable_music"
 CONF_ENABLE_CAMERAS: Final = "enable_cameras"
 CONF_ENABLE_SPORTS: Final = "enable_sports"
 CONF_ENABLE_NEWS: Final = "enable_news"
@@ -117,7 +116,6 @@ CONF_ENABLE_WIKIPEDIA: Final = "enable_wikipedia"
 
 DEFAULT_ENABLE_WEATHER: Final = True
 DEFAULT_ENABLE_CALENDAR: Final = True
-DEFAULT_ENABLE_MUSIC: Final = True
 DEFAULT_ENABLE_CAMERAS: Final = False  # Requires vllm_video integration
 DEFAULT_ENABLE_SPORTS: Final = True
 DEFAULT_ENABLE_NEWS: Final = True
@@ -132,8 +130,6 @@ DEFAULT_ENABLE_WIKIPEDIA: Final = True
 # =============================================================================
 CONF_THERMOSTAT_ENTITY: Final = "thermostat_entity"
 CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
-CONF_MUSIC_PLAYERS: Final = "music_players"
-CONF_DEFAULT_MUSIC_PLAYER: Final = "default_music_player"
 CONF_ROOM_PLAYER_MAPPING: Final = "room_player_mapping"
 CONF_LAST_ACTIVE_SPEAKER: Final = "last_active_speaker"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
@@ -198,8 +194,6 @@ CAMERA_FRIENDLY_NAMES: Final = {
 
 DEFAULT_THERMOSTAT_ENTITY: Final = ""
 DEFAULT_CALENDAR_ENTITIES: Final = ""
-DEFAULT_MUSIC_PLAYERS: Final = []  # List of media_player entity_ids
-DEFAULT_DEFAULT_MUSIC_PLAYER: Final = ""
 DEFAULT_ROOM_PLAYER_MAPPING: Final = ""  # room:entity_id, one per line
 DEFAULT_LAST_ACTIVE_SPEAKER: Final = ""  # input_text helper entity_id
 DEFAULT_DEVICE_ALIASES: Final = ""
@@ -231,10 +225,7 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    "HassMediaPause",
-    "HassMediaUnpause",
-    "HassMediaNext",
-    "HassMediaPrevious",
+    # Music intents now go through native HA (no custom music code)
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
@@ -284,7 +275,7 @@ GENERAL GUIDELINES:
 - For restaurant recommendations, use get_restaurant_recommendations
 - For news, use get_news
 - For calendar events, use get_calendar_events
-- For music control (play, skip, next track, previous, pause, resume, transfer), use control_music
+- For music control (play, skip, pause, etc.), let native Home Assistant handle it
 - For native HA control (lights, locks), let native HA Assist handle those
 """
 

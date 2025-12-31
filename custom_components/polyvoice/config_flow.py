@@ -58,7 +58,6 @@ from .const import (
     # Feature toggles
     CONF_ENABLE_WEATHER,
     CONF_ENABLE_CALENDAR,
-    CONF_ENABLE_MUSIC,
     CONF_ENABLE_CAMERAS,
     CONF_ENABLE_SPORTS,
     CONF_ENABLE_NEWS,
@@ -70,8 +69,6 @@ from .const import (
     # Entity config
     CONF_THERMOSTAT_ENTITY,
     CONF_CALENDAR_ENTITIES,
-    CONF_MUSIC_PLAYERS,
-    CONF_DEFAULT_MUSIC_PLAYER,
     CONF_ROOM_PLAYER_MAPPING,
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
@@ -99,7 +96,6 @@ from .const import (
     DEFAULT_NEWSAPI_KEY,
     DEFAULT_ENABLE_WEATHER,
     DEFAULT_ENABLE_CALENDAR,
-    DEFAULT_ENABLE_MUSIC,
     DEFAULT_ENABLE_CAMERAS,
     DEFAULT_ENABLE_SPORTS,
     DEFAULT_ENABLE_NEWS,
@@ -110,8 +106,6 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     DEFAULT_THERMOSTAT_ENTITY,
     DEFAULT_CALENDAR_ENTITIES,
-    DEFAULT_MUSIC_PLAYERS,
-    DEFAULT_DEFAULT_MUSIC_PLAYER,
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
@@ -447,10 +441,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         default=current.get(CONF_ENABLE_CALENDAR, DEFAULT_ENABLE_CALENDAR),
                     ): cv.boolean,
                     vol.Optional(
-                        CONF_ENABLE_MUSIC,
-                        default=current.get(CONF_ENABLE_MUSIC, DEFAULT_ENABLE_MUSIC),
-                    ): cv.boolean,
-                    vol.Optional(
                         CONF_ENABLE_CAMERAS,
                         default=current.get(CONF_ENABLE_CAMERAS, DEFAULT_ENABLE_CAMERAS),
                     ): cv.boolean,
@@ -514,18 +504,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     processed_input[CONF_CAMERA_ENTITIES] = cam_list
 
-            # Handle default music player - single entity
-            if CONF_DEFAULT_MUSIC_PLAYER in user_input:
-                processed_input[CONF_DEFAULT_MUSIC_PLAYER] = user_input[CONF_DEFAULT_MUSIC_PLAYER]
-
-            # Handle music players - list of media_player entities
-            if CONF_MUSIC_PLAYERS in user_input:
-                players_list = user_input[CONF_MUSIC_PLAYERS]
-                if isinstance(players_list, list):
-                    processed_input[CONF_MUSIC_PLAYERS] = players_list
-                else:
-                    processed_input[CONF_MUSIC_PLAYERS] = [players_list] if players_list else []
-
             # Handle last active speaker helper
             if CONF_LAST_ACTIVE_SPEAKER in user_input:
                 processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
@@ -552,6 +530,14 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_FACIAL_RECOGNITION_EVENT in user_input:
                 processed_input[CONF_FACIAL_RECOGNITION_EVENT] = user_input[CONF_FACIAL_RECOGNITION_EVENT]
 
+            # Handle excluded intents
+            if CONF_EXCLUDED_INTENTS in user_input:
+                processed_input[CONF_EXCLUDED_INTENTS] = user_input[CONF_EXCLUDED_INTENTS]
+
+            # Handle custom excluded intents
+            if CONF_CUSTOM_EXCLUDED_INTENTS in user_input:
+                processed_input[CONF_CUSTOM_EXCLUDED_INTENTS] = user_input[CONF_CUSTOM_EXCLUDED_INTENTS]
+
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
 
@@ -570,19 +556,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             current_cameras = [c.strip() for c in current_cameras.split("\n") if c.strip()]
         elif not current_cameras:
             current_cameras = []
-
-        # Parse current music players (now a list)
-        current_music_players = current.get(CONF_MUSIC_PLAYERS, DEFAULT_MUSIC_PLAYERS)
-        if isinstance(current_music_players, str) and current_music_players:
-            # Migrate old format: parse "room:entity_id" lines to just entity_ids
-            current_music_players = []
-            for line in current.get(CONF_MUSIC_PLAYERS, "").split("\n"):
-                if ":" in line:
-                    current_music_players.append(line.split(":", 1)[1].strip())
-                elif line.strip().startswith("media_player."):
-                    current_music_players.append(line.strip())
-        elif not current_music_players:
-            current_music_players = []
 
         return self.async_show_form(
             step_id="entities",
@@ -616,24 +589,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             domain="camera",
-                            multiple=True,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_DEFAULT_MUSIC_PLAYER,
-                        default=current.get(CONF_DEFAULT_MUSIC_PLAYER, DEFAULT_DEFAULT_MUSIC_PLAYER),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="media_player",
-                            multiple=False,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_MUSIC_PLAYERS,
-                        default=current_music_players,
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="media_player",
                             multiple=True,
                         )
                     ),

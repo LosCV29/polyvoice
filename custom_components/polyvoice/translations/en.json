@@ -60,7 +60,6 @@
         "data": {
           "enable_weather": "Weather (OpenWeatherMap)",
           "enable_calendar": "Calendar Events",
-          "enable_music": "Music Control",
           "enable_cameras": "Camera Checks (requires HA Video Vision integration)",
           "enable_sports": "Sports Scores & Schedules",
           "enable_news": "News Headlines",
@@ -79,8 +78,6 @@
           "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
-          "default_music_player": "Default Music Player",
-          "music_players": "Music Players by Room (room:entity_id, one per line)",
           "notification_service": "Notification Service (e.g., mobile_app_your_phone)"
         }
       },
