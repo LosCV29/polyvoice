@@ -3095,6 +3095,9 @@ class LMStudioConversationEntity(ConversationEntity):
                         return {"error": "What would you like to play?"}
 
                     target_player = find_player_for_room(room) or default_player
+                    if not target_player:
+                        return {"error": "No music player found. Please configure music players in PolyVoice settings."}
+
                     _LOGGER.info("Playing '%s' on %s (shuffle=%s)", query, target_player, shuffle)
 
                     # If shuffle requested, enable shuffle FIRST
@@ -3166,6 +3169,9 @@ class LMStudioConversationEntity(ConversationEntity):
                     if not target_player:
                         target_player = default_player
 
+                    if not target_player:
+                        return {"error": "No music player found. Please specify a room or configure a default player."}
+
                     _LOGGER.info("Skipping to next track on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_next_track",
@@ -3183,6 +3189,9 @@ class LMStudioConversationEntity(ConversationEntity):
                     if not target_player:
                         target_player = default_player
 
+                    if not target_player:
+                        return {"error": "No music player found. Please specify a room or configure a default player."}
+
                     _LOGGER.info("Going to previous track on %s", target_player)
                     await self.hass.services.async_call(
                         "media_player", "media_previous_track",
@@ -3199,7 +3208,9 @@ class LMStudioConversationEntity(ConversationEntity):
                         target_player = find_playing_player()
                     if not target_player:
                         target_player = default_player
-                        _LOGGER.info("No playing player found, using default: %s", target_player)
+
+                    if not target_player:
+                        return {"error": "No music player found. Please specify a room or configure a default player."}
 
                     _LOGGER.info("Pausing music on %s", target_player)
                     await self.hass.services.async_call(
@@ -3222,6 +3233,9 @@ class LMStudioConversationEntity(ConversationEntity):
                                 break
                     if not target_player:
                         target_player = default_player
+
+                    if not target_player:
+                        return {"error": "No music player found. Please specify a room or configure a default player."}
 
                     _LOGGER.info("Resuming music on %s", target_player)
                     await self.hass.services.async_call(
