@@ -3076,12 +3076,11 @@ class LMStudioConversationEntity(ConversationEntity):
                                 blocking=True
                             )
 
-                    # Track last active
+                    # Track last active (fire-and-forget)
                     if self.last_active_speaker and target_players:
                         await self.hass.services.async_call(
                             "input_text", "set_value",
-                            {"entity_id": self.last_active_speaker, "value": target_players[0]},
-                            blocking=True
+                            {"entity_id": self.last_active_speaker, "value": target_players[0]}
                         )
 
                     room_text = "everywhere" if room == "everywhere" else f"in the {room or get_room_name(target_players[0])}"
@@ -3090,7 +3089,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 elif action == "pause":
                     active = find_active_player()
                     if active:
-                        await self.hass.services.async_call("media_player", "media_pause", {"entity_id": active}, blocking=True)
+                        await self.hass.services.async_call("media_player", "media_pause", {"entity_id": active})
                         return {"status": "paused", "message": f"Paused in {get_room_name(active)}"}
                     return {"error": "No music playing to pause"}
 
@@ -3108,28 +3107,28 @@ class LMStudioConversationEntity(ConversationEntity):
                                 target = pid
                                 break
                     if target:
-                        await self.hass.services.async_call("media_player", "media_play", {"entity_id": target}, blocking=True)
+                        await self.hass.services.async_call("media_player", "media_play", {"entity_id": target})
                         return {"status": "resumed", "message": f"Resumed in {get_room_name(target)}"}
                     return {"error": "No paused music to resume"}
 
                 elif action == "stop":
                     active = find_active_player()
                     if active:
-                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": active}, blocking=True)
+                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": active})
                         return {"status": "stopped", "message": f"Stopped in {get_room_name(active)}"}
                     return {"message": "No music playing"}
 
                 elif action == "skip_next":
                     active = find_active_player()
                     if active:
-                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": active}, blocking=True)
+                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": active})
                         return {"status": "skipped", "message": "Skipped to next track"}
                     return {"error": "No music playing to skip"}
 
                 elif action == "skip_previous":
                     active = find_active_player()
                     if active:
-                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": active}, blocking=True)
+                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": active})
                         return {"status": "skipped", "message": "Previous track"}
                     return {"error": "No music playing"}
 
@@ -3159,12 +3158,11 @@ class LMStudioConversationEntity(ConversationEntity):
                         target={"entity_id": target},
                         blocking=True
                     )
-                    # Update last active
+                    # Update last active (fire-and-forget)
                     if self.last_active_speaker:
                         await self.hass.services.async_call(
                             "input_text", "set_value",
-                            {"entity_id": self.last_active_speaker, "value": target},
-                            blocking=True
+                            {"entity_id": self.last_active_speaker, "value": target}
                         )
                     return {"status": "transferred", "message": f"Music transferred to {get_room_name(target)}"}
 
