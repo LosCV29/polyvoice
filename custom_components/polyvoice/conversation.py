@@ -916,67 +916,6 @@ class LMStudioConversationEntity(ConversationEntity):
         
         return tools
 
-    async def _handle_simple_music(
-        self, text: str, language: str, conversation_id: str
-    ) -> conversation.ConversationResult | None:
-        """Handle simple music commands instantly - no LLM needed."""
-        import re
-
-        # Get target player from helper or find playing one
-        helper = "input_text.current_music_player"
-        state = self.hass.states.get(helper)
-        target = None
-        if state and state.state and state.state.startswith("media_player."):
-            target = state.state
-        if not target:
-            for player in self.music_players:
-                pstate = self.hass.states.get(player)
-                if pstate and pstate.state == "playing":
-                    target = player
-                    break
-        if not target:
-            target = self.music_players[0] if self.music_players else None
-
-        if not target:
-            return None
-
-        def respond(msg: str) -> conversation.ConversationResult:
-            resp = intent.IntentResponse(language=language)
-            resp.async_set_speech(msg)
-            return conversation.ConversationResult(response=resp, conversation_id=conversation_id)
-
-        # SKIP
-        if re.match(r'^(skip|next|next track|next song)$', text):
-            _LOGGER.warning("=== HARDCODED SKIP === %s", target)
-            await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": target}, blocking=True)
-            return respond("Skipped")
-
-        # PREVIOUS
-        if re.match(r'^(previous|prev|go back|last song)$', text):
-            _LOGGER.warning("=== HARDCODED PREVIOUS === %s", target)
-            await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": target}, blocking=True)
-            return respond("Previous track")
-
-        # PAUSE
-        if re.match(r'^(pause|pause music|hold)$', text):
-            _LOGGER.warning("=== HARDCODED PAUSE === %s", target)
-            await self.hass.services.async_call("media_player", "media_pause", {"entity_id": target}, blocking=True)
-            return respond("Paused")
-
-        # RESUME
-        if re.match(r'^(resume|continue|unpause)$', text):
-            _LOGGER.warning("=== HARDCODED RESUME === %s", target)
-            await self.hass.services.async_call("media_player", "media_play", {"entity_id": target}, blocking=True)
-            return respond("Resumed")
-
-        # STOP
-        if re.match(r'^(stop|stop music|stop playing)$', text):
-            _LOGGER.warning("=== HARDCODED STOP === %s", target)
-            await self.hass.services.async_call("media_player", "media_stop", {"entity_id": target}, blocking=True)
-            return respond("Stopped")
-
-        return None
-
     async def async_process(
         self, user_input: conversation.ConversationInput
     ) -> conversation.ConversationResult:
@@ -988,22 +927,16 @@ class LMStudioConversationEntity(ConversationEntity):
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        # HARDCODED SIMPLE MUSIC COMMANDS - no LLM needed, just do it
-        text_lower = user_input.text.lower().strip()
-        if self.enable_music and self.music_players:
-            simple_result = await self._handle_simple_music(text_lower, user_input.language, conversation_id)
-            if simple_result is not None:
-                return simple_result
-
-        # Check if it's a music command that needs LLM (play X, shuffle X, etc)
+        # Skip native intents for music - LLM handles all music
+        text_lower = user_input.text.lower()
         is_music = any(kw in text_lower for kw in [
-            'play', 'shuffle', 'music', 'song', 'track', 'album', 'artist', 'playlist'
+            'play', 'pause', 'resume', 'stop', 'skip', 'next', 'previous',
+            'shuffle', 'music', 'song', 'track', 'album', 'artist', 'playlist'
         ])
 
         if self.use_native_intents and not is_music:
             native_result = await self._try_native_intent(user_input, conversation_id)
             if native_result is not None:
-                _LOGGER.info("Handled by native intent (not LLM): %s", user_input.text)
                 return native_result
 
         # Use pre-built tools (cached at config load for speed!)
