@@ -838,7 +838,7 @@ class LMStudioConversationEntity(ConversationEntity):
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["play", "transfer", "skip", "previous", "pause", "resume"], "description": "The action to perform"},
+                            "action": {"type": "string", "enum": ["play", "transfer", "skip", "previous", "pause", "resume", "stop"], "description": "The action to perform"},
                             "query": {"type": "string", "description": "What to play: artist, song, album, playlist, or genre (e.g., 'jazz', 'Beatles', 'workout playlist')"},
                             "room": {"type": "string", "description": "Target room for playback or transfer (e.g., 'kitchen', 'bedroom', 'office')"},
                             "shuffle": {"type": "boolean", "description": "Shuffle the playlist (default: false)"}
@@ -3258,6 +3258,26 @@ class LMStudioConversationEntity(ConversationEntity):
                         blocking=True
                     )
                     return {"status": "resumed", "message": "Music resumed"}
+
+                # ===== STOP ACTION =====
+                elif action == "stop":
+                    # Priority: 1. last_active_speaker helper, 2. currently playing, 3. default
+                    target_player = get_last_active_player()
+                    if not target_player:
+                        target_player = find_playing_player()
+                    if not target_player:
+                        target_player = default_player
+
+                    if not target_player:
+                        return {"error": "No music player found. Please specify a room or configure a default player."}
+
+                    _LOGGER.info("Stopping music on %s", target_player)
+                    await self.hass.services.async_call(
+                        "media_player", "media_stop",
+                        {"entity_id": target_player},
+                        blocking=True
+                    )
+                    return {"status": "stopped", "message": "Music stopped"}
 
                 else:
                     return {"error": f"Unknown action: {action}"}
