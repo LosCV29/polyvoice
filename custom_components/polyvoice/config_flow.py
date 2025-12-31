@@ -532,6 +532,22 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_NOTIFICATION_SERVICE in user_input:
                 processed_input[CONF_NOTIFICATION_SERVICE] = user_input[CONF_NOTIFICATION_SERVICE]
 
+            # Handle room to player mapping
+            if CONF_ROOM_PLAYER_MAPPING in user_input:
+                processed_input[CONF_ROOM_PLAYER_MAPPING] = user_input[CONF_ROOM_PLAYER_MAPPING]
+
+            # Handle thermostat settings
+            if CONF_THERMOSTAT_MIN_TEMP in user_input:
+                processed_input[CONF_THERMOSTAT_MIN_TEMP] = user_input[CONF_THERMOSTAT_MIN_TEMP]
+            if CONF_THERMOSTAT_MAX_TEMP in user_input:
+                processed_input[CONF_THERMOSTAT_MAX_TEMP] = user_input[CONF_THERMOSTAT_MAX_TEMP]
+            if CONF_THERMOSTAT_TEMP_STEP in user_input:
+                processed_input[CONF_THERMOSTAT_TEMP_STEP] = user_input[CONF_THERMOSTAT_TEMP_STEP]
+
+            # Handle facial recognition event name
+            if CONF_FACIAL_RECOGNITION_EVENT in user_input:
+                processed_input[CONF_FACIAL_RECOGNITION_EVENT] = user_input[CONF_FACIAL_RECOGNITION_EVENT]
+
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
 
