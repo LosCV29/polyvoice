@@ -1863,8 +1863,8 @@ class LMStudioConversationEntity(ConversationEntity):
                             "get_events",
                             {
                                 "entity_id": cal_entity,
-                                "start_date_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                "end_date_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "start_date_time": start_time.isoformat(),
+                                "end_date_time": end_time.isoformat(),
                             },
                             blocking=True,
                             return_response=True,
