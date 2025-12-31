@@ -536,8 +536,11 @@ class LMStudioConversationEntity(ConversationEntity):
         self.enable_music = config.get(CONF_ENABLE_MUSIC, DEFAULT_ENABLE_MUSIC)
 
         # Music configuration
-        self.room_player_mapping = parse_entity_config(config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING))
+        raw_mapping = config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING)
+        self.room_player_mapping = parse_entity_config(raw_mapping)
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER)
+        _LOGGER.info("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
+                     self.enable_music, raw_mapping, self.room_player_mapping)
 
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
@@ -889,8 +892,10 @@ class LMStudioConversationEntity(ConversationEntity):
             })
 
         # ===== MUSIC CONTROL (if enabled and room mapping configured) =====
+        _LOGGER.info("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
         if self.enable_music and self.room_player_mapping:
             rooms_list = ", ".join(self.room_player_mapping.keys())
+            _LOGGER.info("MUSIC TOOL ENABLED with rooms: %s", rooms_list)
             tools.append({
                 "type": "function",
                 "function": {
