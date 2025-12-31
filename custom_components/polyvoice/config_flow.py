@@ -548,6 +548,14 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_FACIAL_RECOGNITION_EVENT in user_input:
                 processed_input[CONF_FACIAL_RECOGNITION_EVENT] = user_input[CONF_FACIAL_RECOGNITION_EVENT]
 
+            # Handle excluded intents
+            if CONF_EXCLUDED_INTENTS in user_input:
+                processed_input[CONF_EXCLUDED_INTENTS] = user_input[CONF_EXCLUDED_INTENTS]
+
+            # Handle custom excluded intents
+            if CONF_CUSTOM_EXCLUDED_INTENTS in user_input:
+                processed_input[CONF_CUSTOM_EXCLUDED_INTENTS] = user_input[CONF_CUSTOM_EXCLUDED_INTENTS]
+
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
 
