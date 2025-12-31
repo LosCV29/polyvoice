@@ -227,12 +227,6 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    # Exclude media intents so custom music control handles them
-    "HassMediaSearchAndPlay",
-    "HassMediaNext",
-    "HassMediaPause",
-    "HassMediaPrevious",
-    "HassMediaUnpause",
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
