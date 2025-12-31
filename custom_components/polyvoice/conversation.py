@@ -3141,7 +3141,16 @@ class LMStudioConversationEntity(ConversationEntity):
                     if not query:
                         return {"error": "What would you like to play?"}
 
-                    target_player = find_player_for_room(room) or default_player
+                    # Priority: room mapping → last active player → default player
+                    if room:
+                        target_player = find_player_for_room(room)
+                    else:
+                        target_player = get_last_active_player()
+                        if target_player:
+                            _LOGGER.warning("=== PLAY USING HELPER === No room specified, using last active: %s", target_player)
+
+                    if not target_player:
+                        target_player = default_player
                     if not target_player:
                         return {"error": "No music player found. Please configure music players in PolyVoice settings."}
 
