@@ -919,98 +919,57 @@ class LMStudioConversationEntity(ConversationEntity):
     async def _handle_simple_music(
         self, text: str, language: str, conversation_id: str
     ) -> conversation.ConversationResult | None:
-        """Handle simple music commands instantly - context aware via helper."""
-        import re
+        """Simple music commands → active player from helper."""
 
-        _LOGGER.warning("=== SIMPLE MUSIC CHECK === text='%s'", text)
+        # Get active player: helper → playing → default
+        helper = self.last_active_speaker or "input_text.current_music_player"
+        state = self.hass.states.get(helper)
+        target = state.state if state and state.state.startswith("media_player.") else None
 
-        # Check if this is a simple music command
-        is_skip = text.startswith('skip') or text.startswith('next')
-        is_previous = text.startswith('previous') or text.startswith('prev') or text == 'go back'
-        is_pause = text.startswith('pause')
-        is_resume = text.startswith('resume') or text.startswith('continue') or text == 'unpause'
-        is_stop = text.startswith('stop')
-
-        if not (is_skip or is_previous or is_pause or is_resume or is_stop):
-            return None
-
-        _LOGGER.warning("=== SIMPLE MUSIC MATCHED === type=%s",
-                       'skip' if is_skip else 'previous' if is_previous else 'pause' if is_pause else 'resume' if is_resume else 'stop')
-
-        # Extract room if specified (e.g., "skip in kitchen", "pause the living room")
-        room = None
-        room_match = re.search(r'(?:in|on|the)\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s*$', text)
-        if room_match:
-            room = room_match.group(1).strip()
-            _LOGGER.warning("=== SIMPLE MUSIC === Extracted room: '%s'", room)
-
-        # Get target player
-        target = None
-
-        # If room specified, use room mapping
-        if room and self.room_player_mapping:
-            room_lower = room.lower()
-            for rname, player in self.room_player_mapping.items():
-                if room_lower in rname.lower() or rname.lower() in room_lower:
-                    target = player
-                    _LOGGER.warning("=== SIMPLE MUSIC === Room '%s' -> player: %s", room, target)
-                    break
-
-        # Priority 1: Helper (last active speaker)
         if not target:
-            helper = self.last_active_speaker or "input_text.current_music_player"
-            state = self.hass.states.get(helper)
-            if state and state.state and state.state.startswith("media_player."):
-                target = state.state
-                _LOGGER.warning("=== SIMPLE MUSIC === Using helper: %s", target)
-
-        # Priority 2: Currently playing player
-        if not target and self.music_players:
-            for player in self.music_players:
-                pstate = self.hass.states.get(player)
-                if pstate and pstate.state == "playing":
-                    target = player
-                    _LOGGER.warning("=== SIMPLE MUSIC === Using playing player: %s", target)
+            for p in (self.music_players or []):
+                if self.hass.states.get(p) and self.hass.states.get(p).state == "playing":
+                    target = p
                     break
 
-        # Priority 3: Default player
         if not target:
             target = self.default_music_player or (self.music_players[0] if self.music_players else None)
-            if target:
-                _LOGGER.warning("=== SIMPLE MUSIC === Using default: %s", target)
 
         if not target:
-            _LOGGER.warning("=== SIMPLE MUSIC === No target found!")
             return None
 
-        def respond(msg: str) -> conversation.ConversationResult:
-            resp = intent.IntentResponse(language=language)
-            resp.async_set_speech(msg)
-            return conversation.ConversationResult(response=resp, conversation_id=conversation_id)
+        def respond(msg):
+            r = intent.IntentResponse(language=language)
+            r.async_set_speech(msg)
+            return conversation.ConversationResult(response=r, conversation_id=conversation_id)
 
-        # Execute the action
-        if is_skip:
-            _LOGGER.warning("=== SKIP EXECUTING === target=%s", target)
+        # SKIP - if "skip" or "next" anywhere in text
+        if 'skip' in text or 'next' in text:
+            _LOGGER.warning("=== SKIP === %s", target)
             await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": target}, blocking=True)
             return respond("Skipped")
 
-        if is_previous:
-            _LOGGER.warning("=== PREVIOUS EXECUTING === target=%s", target)
+        # PREVIOUS
+        if 'previous' in text or 'go back' in text:
+            _LOGGER.warning("=== PREVIOUS === %s", target)
             await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": target}, blocking=True)
             return respond("Previous")
 
-        if is_pause:
-            _LOGGER.warning("=== PAUSE EXECUTING === target=%s", target)
+        # PAUSE
+        if 'pause' in text:
+            _LOGGER.warning("=== PAUSE === %s", target)
             await self.hass.services.async_call("media_player", "media_pause", {"entity_id": target}, blocking=True)
             return respond("Paused")
 
-        if is_resume:
-            _LOGGER.warning("=== RESUME EXECUTING === target=%s", target)
+        # RESUME
+        if 'resume' in text or 'unpause' in text:
+            _LOGGER.warning("=== RESUME === %s", target)
             await self.hass.services.async_call("media_player", "media_play", {"entity_id": target}, blocking=True)
             return respond("Resumed")
 
-        if is_stop:
-            _LOGGER.warning("=== STOP EXECUTING === target=%s", target)
+        # STOP (exact or with music/playing)
+        if text == 'stop' or 'stop music' in text or 'stop playing' in text:
+            _LOGGER.warning("=== STOP === %s", target)
             await self.hass.services.async_call("media_player", "media_stop", {"entity_id": target}, blocking=True)
             return respond("Stopped")
 
