@@ -113,6 +113,7 @@ CONF_ENABLE_RESTAURANTS: Final = "enable_restaurants"
 CONF_ENABLE_THERMOSTAT: Final = "enable_thermostat"
 CONF_ENABLE_DEVICE_STATUS: Final = "enable_device_status"
 CONF_ENABLE_WIKIPEDIA: Final = "enable_wikipedia"
+CONF_ENABLE_MUSIC: Final = "enable_music"
 
 DEFAULT_ENABLE_WEATHER: Final = True
 DEFAULT_ENABLE_CALENDAR: Final = True
@@ -124,6 +125,7 @@ DEFAULT_ENABLE_RESTAURANTS: Final = True
 DEFAULT_ENABLE_THERMOSTAT: Final = True
 DEFAULT_ENABLE_DEVICE_STATUS: Final = True
 DEFAULT_ENABLE_WIKIPEDIA: Final = True
+DEFAULT_ENABLE_MUSIC: Final = False  # Requires Music Assistant + player config
 
 # =============================================================================
 # ENTITY CONFIGURATION - User-defined entities
@@ -225,7 +227,6 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    # Music intents now go through native HA (no custom music code)
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
