@@ -81,6 +81,7 @@ from .const import (
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
     CONF_THERMOSTAT_TEMP_STEP,
+    CONF_THERMOSTAT_USE_CELSIUS,
     # Event names
     CONF_FACIAL_RECOGNITION_EVENT,
     # Defaults
@@ -120,6 +121,7 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP,
     DEFAULT_THERMOSTAT_MAX_TEMP,
     DEFAULT_THERMOSTAT_TEMP_STEP,
+    DEFAULT_THERMOSTAT_USE_CELSIUS,
     # Event defaults
     DEFAULT_FACIAL_RECOGNITION_EVENT,
     ALL_NATIVE_INTENTS,
@@ -543,6 +545,8 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 processed_input[CONF_THERMOSTAT_MAX_TEMP] = user_input[CONF_THERMOSTAT_MAX_TEMP]
             if CONF_THERMOSTAT_TEMP_STEP in user_input:
                 processed_input[CONF_THERMOSTAT_TEMP_STEP] = user_input[CONF_THERMOSTAT_TEMP_STEP]
+            if CONF_THERMOSTAT_USE_CELSIUS in user_input:
+                processed_input[CONF_THERMOSTAT_USE_CELSIUS] = user_input[CONF_THERMOSTAT_USE_CELSIUS]
 
             # Handle facial recognition event name
             if CONF_FACIAL_RECOGNITION_EVENT in user_input:
@@ -593,6 +597,10 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                             multiple=False,
                         )
                     ),
+                    vol.Optional(
+                        CONF_THERMOSTAT_USE_CELSIUS,
+                        default=current.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS),
+                    ): cv.boolean,
                     vol.Optional(
                         CONF_CALENDAR_ENTITIES,
                         default=current_calendars,

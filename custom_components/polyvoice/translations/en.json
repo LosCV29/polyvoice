@@ -76,6 +76,7 @@
         "description": "Configure which Home Assistant entities to use for each feature",
         "data": {
           "thermostat_entity": "Thermostat",
+          "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
           "default_music_player": "Default Music Player",
