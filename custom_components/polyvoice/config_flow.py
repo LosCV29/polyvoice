@@ -66,6 +66,7 @@ from .const import (
     CONF_ENABLE_THERMOSTAT,
     CONF_ENABLE_DEVICE_STATUS,
     CONF_ENABLE_WIKIPEDIA,
+    CONF_ENABLE_MUSIC,
     # Entity config
     CONF_THERMOSTAT_ENTITY,
     CONF_CALENDAR_ENTITIES,
@@ -104,6 +105,7 @@ from .const import (
     DEFAULT_ENABLE_THERMOSTAT,
     DEFAULT_ENABLE_DEVICE_STATUS,
     DEFAULT_ENABLE_WIKIPEDIA,
+    DEFAULT_ENABLE_MUSIC,
     DEFAULT_THERMOSTAT_ENTITY,
     DEFAULT_CALENDAR_ENTITIES,
     DEFAULT_ROOM_PLAYER_MAPPING,
@@ -474,6 +476,10 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_ENABLE_WIKIPEDIA,
                         default=current.get(CONF_ENABLE_WIKIPEDIA, DEFAULT_ENABLE_WIKIPEDIA),
+                    ): cv.boolean,
+                    vol.Optional(
+                        CONF_ENABLE_MUSIC,
+                        default=current.get(CONF_ENABLE_MUSIC, DEFAULT_ENABLE_MUSIC),
                     ): cv.boolean,
                 }
             ),

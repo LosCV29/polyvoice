@@ -73,8 +73,11 @@ from .const import (
     CONF_ENABLE_THERMOSTAT,
     CONF_ENABLE_DEVICE_STATUS,
     CONF_ENABLE_WIKIPEDIA,
+    CONF_ENABLE_MUSIC,
     # Entity config
     CONF_THERMOSTAT_ENTITY,
+    CONF_ROOM_PLAYER_MAPPING,
+    CONF_LAST_ACTIVE_SPEAKER,
     CONF_CALENDAR_ENTITIES,
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
@@ -95,6 +98,9 @@ from .const import (
     DEFAULT_ENABLE_THERMOSTAT,
     DEFAULT_ENABLE_DEVICE_STATUS,
     DEFAULT_ENABLE_WIKIPEDIA,
+    DEFAULT_ENABLE_MUSIC,
+    DEFAULT_ROOM_PLAYER_MAPPING,
+    DEFAULT_LAST_ACTIVE_SPEAKER,
     CAMERA_FRIENDLY_NAMES,
     ALL_NATIVE_INTENTS,
     # Thermostat settings
@@ -530,7 +536,15 @@ class LMStudioConversationEntity(ConversationEntity):
         self.enable_thermostat = config.get(CONF_ENABLE_THERMOSTAT, DEFAULT_ENABLE_THERMOSTAT)
         self.enable_device_status = config.get(CONF_ENABLE_DEVICE_STATUS, DEFAULT_ENABLE_DEVICE_STATUS)
         self.enable_wikipedia = config.get(CONF_ENABLE_WIKIPEDIA, DEFAULT_ENABLE_WIKIPEDIA)
-        
+        self.enable_music = config.get(CONF_ENABLE_MUSIC, DEFAULT_ENABLE_MUSIC)
+
+        # Music configuration
+        raw_mapping = config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING)
+        self.room_player_mapping = parse_entity_config(raw_mapping)
+        self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER)
+        _LOGGER.info("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
+                     self.enable_music, raw_mapping, self.room_player_mapping)
+
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
@@ -909,7 +923,39 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
                 }
             })
-        
+
+        # ===== MUSIC CONTROL (if enabled and room mapping configured) =====
+        _LOGGER.info("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
+        if self.enable_music and self.room_player_mapping:
+            rooms_list = ", ".join(self.room_player_mapping.keys())
+            _LOGGER.info("MUSIC TOOL ENABLED with rooms: %s", rooms_list)
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "control_music",
+                    "description": f"Control music playback via Music Assistant. Rooms: {rooms_list}, everywhere. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer"],
+                                "description": "The music action to perform"
+                            },
+                            "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre)"},
+                            "room": {"type": "string", "description": f"Target room ({rooms_list}, or 'everywhere')"},
+                            "media_type": {
+                                "type": "string",
+                                "enum": ["artist", "album", "track", "playlist", "genre"],
+                                "description": "Type of media (default: artist)"
+                            },
+                            "shuffle": {"type": "boolean", "description": "Enable shuffle mode"}
+                        },
+                        "required": ["action"]
+                    }
+                }
+            })
+
         return tools
 
     async def async_process(
@@ -3005,6 +3051,190 @@ class LMStudioConversationEntity(ConversationEntity):
             except Exception as err:
                 _LOGGER.error("Error searching Yelp: %s", err, exc_info=True)
                 return {"error": f"Failed to search restaurants: {str(err)}"}
+
+        elif tool_name == "control_music":
+            action = arguments.get("action", "").lower()
+            query = arguments.get("query", "")
+            media_type = arguments.get("media_type", "artist")
+            room = arguments.get("room", "").lower() if arguments.get("room") else ""
+            shuffle = arguments.get("shuffle", False)
+
+            _LOGGER.info("=== MUSIC CONTROL START ===")
+            _LOGGER.info("room_player_mapping config: %s", self.room_player_mapping)
+
+            players = self.room_player_mapping  # {room: entity_id}
+            all_players = list(players.values())
+
+            _LOGGER.info("all_players list: %s", all_players)
+
+            if not all_players:
+                _LOGGER.error("No players configured! room_player_mapping is empty")
+                return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping and add entries like: living room: media_player.your_player"}
+
+            # Helper: find player in a specific state
+            def find_player_by_state(target_state):
+                """Scan all players and return the one in the target state."""
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state:
+                        _LOGGER.info("  %s → %s", pid, state.state)
+                        if state.state == target_state:
+                            return pid
+                return None
+
+            # Helper: get room name from entity_id
+            def get_room_name(entity_id):
+                for rname, pid in players.items():
+                    if pid == entity_id:
+                        return rname
+                return "unknown"
+
+            try:
+                _LOGGER.info("=== MUSIC: %s ===", action.upper())
+
+                # Determine target player(s) for play action
+                if room == "everywhere":
+                    target_players = all_players
+                elif room in players:
+                    target_players = [players[room]]
+                elif room:
+                    # Fuzzy match room name
+                    for rname, pid in players.items():
+                        if room in rname or rname in room:
+                            target_players = [pid]
+                            break
+                    else:
+                        target_players = []
+                else:
+                    target_players = []
+
+                if action == "play":
+                    if not query:
+                        return {"error": "No music query specified"}
+                    if not target_players:
+                        return {"error": f"Unknown room: {room}. Available: {', '.join(players.keys())}"}
+
+                    for player in target_players:
+                        await self.hass.services.async_call(
+                            "music_assistant", "play_media",
+                            {"media_id": query, "media_type": media_type, "enqueue": "replace"},
+                            target={"entity_id": player},
+                            blocking=True
+                        )
+                        if shuffle or media_type == "genre":
+                            await self.hass.services.async_call(
+                                "media_player", "shuffle_set",
+                                {"entity_id": player, "shuffle": True},
+                                blocking=True
+                            )
+
+                    # Track last active
+                    if self.last_active_speaker and target_players:
+                        await self.hass.services.async_call(
+                            "input_text", "set_value",
+                            {"entity_id": self.last_active_speaker, "value": target_players[0]}
+                        )
+
+                    room_text = "everywhere" if room == "everywhere" else f"in the {room}"
+                    return {"status": "playing", "message": f"Playing {query} {room_text}"}
+
+                elif action == "pause":
+                    # Find the player that's currently PLAYING and pause it
+                    _LOGGER.info("Looking for player in 'playing' state...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call("media_player", "media_pause", {"entity_id": playing})
+                        return {"status": "paused", "message": f"Paused in {get_room_name(playing)}"}
+                    return {"error": "No music is currently playing"}
+
+                elif action == "resume":
+                    # Find the player that's currently PAUSED and resume it
+                    _LOGGER.info("Looking for player in 'paused' state...")
+                    paused = find_player_by_state("paused")
+                    if paused:
+                        await self.hass.services.async_call("media_player", "media_play", {"entity_id": paused})
+                        return {"status": "resumed", "message": f"Resumed in {get_room_name(paused)}"}
+                    return {"error": "No paused music to resume"}
+
+                elif action == "stop":
+                    # Find the player that's PLAYING or PAUSED and stop it
+                    _LOGGER.info("Looking for player in 'playing' or 'paused' state...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": playing})
+                        return {"status": "stopped", "message": f"Stopped in {get_room_name(playing)}"}
+                    paused = find_player_by_state("paused")
+                    if paused:
+                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": paused})
+                        return {"status": "stopped", "message": f"Stopped in {get_room_name(paused)}"}
+                    return {"message": "No music is playing"}
+
+                elif action == "skip_next":
+                    # Find the player that's PLAYING and skip
+                    _LOGGER.info("Looking for player in 'playing' state...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
+                        return {"status": "skipped", "message": "Skipped to next track"}
+                    return {"error": "No music is playing to skip"}
+
+                elif action == "skip_previous":
+                    # Find the player that's PLAYING and go back
+                    _LOGGER.info("Looking for player in 'playing' state...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": playing})
+                        return {"status": "skipped", "message": "Previous track"}
+                    return {"error": "No music is playing"}
+
+                elif action == "what_playing":
+                    # Find player that's playing
+                    _LOGGER.info("Looking for player in 'playing' state...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        state = self.hass.states.get(playing)
+                        attrs = state.attributes
+                        return {
+                            "title": attrs.get("media_title", "Unknown"),
+                            "artist": attrs.get("media_artist", "Unknown"),
+                            "album": attrs.get("media_album_name", ""),
+                            "room": get_room_name(playing)
+                        }
+                    return {"message": "No music currently playing"}
+
+                elif action == "transfer":
+                    # Find player that's playing and transfer to target room
+                    _LOGGER.info("Looking for player in 'playing' state...")
+                    playing = find_player_by_state("playing")
+                    if not playing:
+                        return {"error": "No music playing to transfer"}
+                    if not target_players:
+                        return {"error": f"No target room specified. Available: {', '.join(players.keys())}"}
+
+                    target = target_players[0]
+                    _LOGGER.info("Transferring from %s to %s", playing, target)
+
+                    # Transfer queue from source to target
+                    await self.hass.services.async_call(
+                        "music_assistant", "transfer_queue",
+                        {"source_player": playing},
+                        target={"entity_id": target},
+                        blocking=True
+                    )
+                    # Update last active
+                    if self.last_active_speaker:
+                        await self.hass.services.async_call(
+                            "input_text", "set_value",
+                            {"entity_id": self.last_active_speaker, "value": target}
+                        )
+                    return {"status": "transferred", "message": f"Music transferred to {get_room_name(target)}"}
+
+                else:
+                    return {"error": f"Unknown action: {action}"}
+
+            except Exception as err:
+                _LOGGER.error("Music control error: %s", err, exc_info=True)
+                return {"error": f"Music control failed: {str(err)}"}
 
         # Default: try to call as a script
         if self.hass.services.has_service("script", tool_name):
