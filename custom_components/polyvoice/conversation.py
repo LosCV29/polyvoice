@@ -1456,10 +1456,13 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     # For control_music, return immediately with the message (don't loop back to LLM)
                     if tool_call["function"]["name"] == "control_music" and isinstance(result, dict):
+                        _LOGGER.warning("=== CONTROL_MUSIC EARLY RETURN === result=%s", result)
                         if "message" in result:
                             return result["message"]
                         elif "error" in result:
                             return result["error"]
+                        # Fallback: return status if no message/error
+                        return f"Music control: {result.get('status', 'done')}"
 
                 continue
             
