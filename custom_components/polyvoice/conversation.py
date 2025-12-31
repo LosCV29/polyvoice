@@ -107,9 +107,11 @@ from .const import (
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
     CONF_THERMOSTAT_TEMP_STEP,
+    CONF_THERMOSTAT_USE_CELSIUS,
     DEFAULT_THERMOSTAT_MIN_TEMP,
     DEFAULT_THERMOSTAT_MAX_TEMP,
     DEFAULT_THERMOSTAT_TEMP_STEP,
+    DEFAULT_THERMOSTAT_USE_CELSIUS,
     # Event names
     CONF_FACIAL_RECOGNITION_EVENT,
     DEFAULT_FACIAL_RECOGNITION_EVENT,
@@ -561,6 +563,7 @@ class LMStudioConversationEntity(ConversationEntity):
         self.thermostat_min_temp = int(config.get(CONF_THERMOSTAT_MIN_TEMP, DEFAULT_THERMOSTAT_MIN_TEMP))
         self.thermostat_max_temp = int(config.get(CONF_THERMOSTAT_MAX_TEMP, DEFAULT_THERMOSTAT_MAX_TEMP))
         self.thermostat_temp_step = int(config.get(CONF_THERMOSTAT_TEMP_STEP, DEFAULT_THERMOSTAT_TEMP_STEP))
+        self.thermostat_use_celsius = config.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS)
 
         # Event names (user-configurable)
         self.facial_recognition_event = config.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT)
@@ -605,6 +608,15 @@ class LMStudioConversationEntity(ConversationEntity):
             "model": "Local LLM",
             "entry_type": "service",
         }
+
+    @property
+    def temp_unit(self) -> str:
+        """Return the temperature unit symbol based on user preference."""
+        return "°C" if self.thermostat_use_celsius else "°F"
+
+    def format_temp(self, temp: float | int) -> str:
+        """Format a temperature value with the appropriate unit."""
+        return f"{int(temp)}{self.temp_unit}"
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
@@ -707,16 +719,18 @@ class LMStudioConversationEntity(ConversationEntity):
         
         # ===== THERMOSTAT (if enabled and entity configured) =====
         if self.enable_thermostat and self.thermostat_entity:
+            temp_unit = self.temp_unit
+            step = self.thermostat_temp_step
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "control_thermostat",
-                    "description": "Control or check the thermostat/AC/air. Use for: 'raise/lower the AC' (±2°F), 'set AC to 72', 'what is the AC set to', 'what's the temp inside'.",
+                    "description": f"Control or check the thermostat/AC/air. Use for: 'raise/lower the AC' (±{step}{temp_unit}), 'set AC to 72', 'what is the AC set to', 'what's the temp inside'.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["raise", "lower", "set", "check"], "description": "'raise' = +2°F, 'lower' = -2°F, 'set' = specific temp, 'check' = get current status"},
-                            "temperature": {"type": "number", "description": "Target temperature (only for 'set' action)"}
+                            "action": {"type": "string", "enum": ["raise", "lower", "set", "check"], "description": f"'raise' = +{step}{temp_unit}, 'lower' = -{step}{temp_unit}, 'set' = specific temp, 'check' = get current status"},
+                            "temperature": {"type": "number", "description": f"Target temperature in {temp_unit} (only for 'set' action)"}
                         },
                         "required": ["action"]
                     }
@@ -2481,7 +2495,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 
                 # Handle check action - just return status
                 if action == "check":
-                    response_text = f"The thermostat is set to {hvac_mode} with a target temperature of {int(current_target)}°F. The current temperature in the home is {int(current_temp)}°F."
+                    response_text = f"The thermostat is set to {hvac_mode} with a target temperature of {self.format_temp(current_target)}. The current temperature in the home is {self.format_temp(current_temp)}."
                     return {"response_text": response_text}
                 
                 # Calculate new temperature
@@ -2512,11 +2526,11 @@ class LMStudioConversationEntity(ConversationEntity):
                 
                 # Build deterministic response
                 if action == "set":
-                    response_text = f"I've set the thermostat to {new_temp}°F."
+                    response_text = f"I've set the thermostat to {self.format_temp(new_temp)}."
                 elif action == "raise":
-                    response_text = f"I've raised the thermostat to {new_temp}°F."
+                    response_text = f"I've raised the thermostat to {self.format_temp(new_temp)}."
                 else:
-                    response_text = f"I've lowered the thermostat to {new_temp}°F."
+                    response_text = f"I've lowered the thermostat to {self.format_temp(new_temp)}."
                 
                 return {"response_text": response_text}
                 
@@ -2579,12 +2593,12 @@ class LMStudioConversationEntity(ConversationEntity):
                 target_temp = state.attributes.get("temperature")
                 current_temp = state.attributes.get("current_temperature")
                 hvac_mode = state.attributes.get("hvac_mode", current_state)
-                
+
                 status_parts = []
                 if target_temp:
-                    status_parts.append(f"set to {target_temp}°F")
+                    status_parts.append(f"set to {self.format_temp(target_temp)}")
                 if current_temp:
-                    status_parts.append(f"currently {current_temp}°F")
+                    status_parts.append(f"currently {self.format_temp(current_temp)}")
                 if hvac_mode:
                     status_parts.append(f"mode: {hvac_mode}")
                 
