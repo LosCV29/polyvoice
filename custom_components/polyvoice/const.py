@@ -229,21 +229,7 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
     "HassTimerStatus",
-    # ALL music intents - send to LLM for better control
-    "HassMediaPause",
-    "HassMediaUnpause",
-    "HassMediaNext",
-    "HassMediaPrevious",
-    "HassMediaPlay",
-    "HassPlayMedia",
-    "HassMediaSearchAndPlay",  # "play X in room" pattern
-    "HassMediaShuffle",
-    "HassMediaRepeat",
-    "HassMediaStop",
-    "HassMediaMute",
-    "HassSetVolume",
-    "HassVolumeUp",
-    "HassVolumeDown",
+    # Music intents now go through native HA (no custom music code)
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
