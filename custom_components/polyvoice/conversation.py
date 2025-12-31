@@ -3174,11 +3174,15 @@ class LMStudioConversationEntity(ConversationEntity):
                     playing_player = None
                     for player in all_players:
                         state = self.hass.states.get(player)
-                        if state and state.state == "playing":
+                        _LOGGER.debug("Player %s state: %s", player, state.state if state else "None")
+                        if state and state.state in ("playing", "buffering", "on"):
                             playing_player = player
                             break
+
+                    # Fall back to default player if none found playing
                     if not playing_player:
-                        return {"status": "no_music", "message": "No music is currently playing"}
+                        playing_player = default_player
+                        _LOGGER.info("No playing player found, using default: %s", playing_player)
 
                     _LOGGER.info("Pausing music on %s", playing_player)
                     await self.hass.services.async_call(
