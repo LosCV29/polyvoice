@@ -554,8 +554,11 @@ class LMStudioConversationEntity(ConversationEntity):
 
         # Room to player explicit mapping (e.g., "living room: media_player.chromecast")
         self.room_player_mapping = parse_entity_config(config.get(CONF_ROOM_PLAYER_MAPPING, ""))
+        _LOGGER.debug("Room player mapping: %s", self.room_player_mapping)
 
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, "")
+        _LOGGER.warning("=== CONFIG LOADED === last_active_speaker='%s' (key exists: %s)",
+                        self.last_active_speaker, CONF_LAST_ACTIVE_SPEAKER in config)
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
@@ -3025,6 +3028,9 @@ class LMStudioConversationEntity(ConversationEntity):
             room = arguments.get("room", "").lower().strip()
             shuffle = arguments.get("shuffle", False)
 
+            _LOGGER.warning("=== CONTROL_MUSIC CALLED === action=%s, query='%s', room='%s', shuffle=%s, last_active_speaker=%s",
+                           action, query, room, shuffle, self.last_active_speaker)
+
             # Get configured players
             all_players = self.music_players if self.music_players else []
             default_player = self.default_music_player or (all_players[0] if all_players else None)
@@ -3078,21 +3084,29 @@ class LMStudioConversationEntity(ConversationEntity):
 
             # Helper to get the last active speaker from the input_text helper
             def get_last_active_player() -> str | None:
+                _LOGGER.warning("get_last_active_player: checking helper=%s", self.last_active_speaker)
                 if self.last_active_speaker:
                     state = self.hass.states.get(self.last_active_speaker)
+                    _LOGGER.warning("get_last_active_player: state=%s", state.state if state else "None")
                     if state and state.state and state.state.startswith("media_player."):
                         return state.state
                 return None
 
             # Helper to update the last active speaker
             async def set_last_active_player(player: str):
+                _LOGGER.warning("=== SET_LAST_ACTIVE_PLAYER === player=%s, helper=%s", player, self.last_active_speaker)
                 if self.last_active_speaker and player:
-                    await self.hass.services.async_call(
-                        "input_text", "set_value",
-                        {"entity_id": self.last_active_speaker, "value": player},
-                        blocking=True
-                    )
-                    _LOGGER.info("Updated last active speaker to: %s", player)
+                    try:
+                        await self.hass.services.async_call(
+                            "input_text", "set_value",
+                            {"entity_id": self.last_active_speaker, "value": player},
+                            blocking=True
+                        )
+                        _LOGGER.warning("Successfully updated last active speaker to: %s", player)
+                    except Exception as e:
+                        _LOGGER.error("Failed to update last active speaker: %s", e)
+                else:
+                    _LOGGER.warning("Cannot update last active speaker: helper=%s, player=%s", self.last_active_speaker, player)
 
             # Helper to find currently playing player (only from configured music_players)
             def find_playing_player() -> str | None:
