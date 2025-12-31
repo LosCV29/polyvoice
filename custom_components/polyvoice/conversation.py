@@ -3217,7 +3217,7 @@ class LMStudioConversationEntity(ConversationEntity):
                     # Transfer queue from source to target
                     await self.hass.services.async_call(
                         "music_assistant", "transfer_queue",
-                        {"source_player": playing},
+                        {"source_player": playing, "auto_play": True},
                         target={"entity_id": target},
                         blocking=True
                     )
