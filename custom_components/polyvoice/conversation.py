@@ -48,10 +48,6 @@ from .const import (
     OPENAI_COMPATIBLE_PROVIDERS,
     DEFAULT_PROVIDER,
     DEFAULT_API_KEY,
-    # Native intents
-    CONF_USE_NATIVE_INTENTS,
-    CONF_EXCLUDED_INTENTS,
-    CONF_CUSTOM_EXCLUDED_INTENTS,
     CONF_SYSTEM_PROMPT,
     CONF_ENABLE_ASSIST,
     CONF_LLM_HASS_API,
@@ -83,8 +79,6 @@ from .const import (
     CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
     # Defaults
-    DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_CUSTOM_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_ENABLE_ASSIST,
     DEFAULT_LLM_HASS_API,
@@ -102,7 +96,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     CAMERA_FRIENDLY_NAMES,
-    ALL_NATIVE_INTENTS,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
@@ -470,15 +463,13 @@ class LMStudioConversationEntity(ConversationEntity):
         else:
             # For Anthropic and Google, we'll use aiohttp directly
             self.client = None
-        
-        self.use_native_intents = config.get(CONF_USE_NATIVE_INTENTS, True)
-        
+
         self.enable_assist = config.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST)
         if self.enable_assist:
             self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
         else:
             self._attr_supported_features = 0
-        
+
         llm_api_config = config.get(CONF_LLM_HASS_API, [DEFAULT_LLM_HASS_API])
         if isinstance(llm_api_config, str):
             self.llm_api_ids = [api.strip() for api in llm_api_config.split(",") if api.strip()]
@@ -486,17 +477,6 @@ class LMStudioConversationEntity(ConversationEntity):
             self.llm_api_ids = llm_api_config
         else:
             self.llm_api_ids = [DEFAULT_LLM_HASS_API]
-        
-        # ALWAYS use default excluded intents (hardcoded) - UI can only ADD more, not remove
-        self.excluded_intents = set(DEFAULT_EXCLUDED_INTENTS)
-
-        # Add any custom excluded intents from UI config
-        custom_excluded = config.get(CONF_CUSTOM_EXCLUDED_INTENTS, DEFAULT_CUSTOM_EXCLUDED_INTENTS)
-        if custom_excluded:
-            custom_list = [i.strip() for i in custom_excluded.split(",") if i.strip()]
-            self.excluded_intents.update(custom_list)
-
-        _LOGGER.warning("=== EXCLUDED INTENTS (hardcoded + custom) === %s", self.excluded_intents)
 
         self.system_prompt = config.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
         
@@ -936,12 +916,6 @@ class LMStudioConversationEntity(ConversationEntity):
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        # Try native intents first if enabled
-        if self.use_native_intents:
-            native_result = await self._try_native_intent(user_input, conversation_id)
-            if native_result is not None:
-                return native_result
-
         # Use pre-built tools (cached at config load for speed!)
         tools = self._tools
 
@@ -980,64 +954,6 @@ class LMStudioConversationEntity(ConversationEntity):
             return min(300, self.max_tokens)
         else:
             return self.max_tokens
-
-    async def _try_native_intent(
-        self, user_input: conversation.ConversationInput, conversation_id: str
-    ) -> conversation.ConversationResult | None:
-        """Try to handle with native intent system using HA's built-in conversation agent."""
-        try:
-            # Use HA's default conversation agent to parse and handle intent
-            result = await conversation.async_converse(
-                hass=self.hass,
-                text=user_input.text,
-                conversation_id=None,  # Fresh conversation
-                context=user_input.context,
-                language=user_input.language,
-                agent_id="conversation.home_assistant",  # Full entity ID
-            )
-            
-            _LOGGER.debug("Native converse response_type: %s", result.response.response_type)
-
-            # Check if we got an intent result
-            if hasattr(result.response, 'intent') and result.response.intent is not None:
-                intent_type = result.response.intent.intent_type
-                _LOGGER.warning("=== NATIVE INTENT MATCHED === type='%s' for: '%s'", intent_type, user_input.text[:80])
-
-                # Check if this intent is in our excluded list
-                if intent_type in self.excluded_intents:
-                    _LOGGER.warning("=== INTENT EXCLUDED === '%s' - sending to LLM", intent_type)
-                    return None
-                else:
-                    _LOGGER.warning("=== INTENT NOT EXCLUDED === '%s' - will be handled natively", intent_type)
-
-            # ACTION_DONE = command executed (turn on light, etc)
-            if result.response.response_type == intent.IntentResponseType.ACTION_DONE:
-                # Check for nonsense responses that indicate mismatched intent
-                speech = ""
-                if result.response.speech:
-                    if isinstance(result.response.speech, dict):
-                        speech = result.response.speech.get("plain", {}).get("speech", "")
-                    else:
-                        speech = str(result.response.speech)
-                
-                # Filter out bad matches - these indicate HA misunderstood
-                bad_responses = ["no timers", "no timer", "don't understand", "sorry"]
-                if any(bad in speech.lower() for bad in bad_responses):
-                    _LOGGER.debug("Filtering bad native response: %s", speech[:50])
-                    return None
-                    
-                _LOGGER.info("Native intent ACTION_DONE for: %s", user_input.text[:50])
-                return result
-            
-            # QUERY_ANSWER = question answered (what's the temperature, etc)  
-            if result.response.response_type == intent.IntentResponseType.QUERY_ANSWER:
-                _LOGGER.info("Native intent QUERY_ANSWER for: %s", user_input.text[:50])
-                return result
-                        
-        except Exception as err:
-            _LOGGER.debug("Native intent exception: %s", err)
-        
-        return None
 
     async def _call_llm_streaming(
         self,
