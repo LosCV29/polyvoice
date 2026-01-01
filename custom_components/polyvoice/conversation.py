@@ -3124,37 +3124,48 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     # For "everywhere" mode, create sync group then play
                     if is_everywhere and len(target_players) > 1:
-                        _LOGGER.info("PARTY MODE: Syncing %d speakers: %s", len(target_players), target_players)
+                        _LOGGER.info("PARTY MODE: Playing on %d speakers: %s", len(target_players), target_players)
                         primary = target_players[0]
                         others = target_players[1:]
 
-                        # First, join all speakers into a sync group with the primary
-                        await self.hass.services.async_call(
-                            "media_player", "join",
-                            {"group_members": others},
-                            target={"entity_id": primary},
-                            blocking=True
-                        )
-                        _LOGGER.info("Speakers synced to %s, now playing...", primary)
+                        # Try to sync speakers first (may not be supported by all players)
+                        try:
+                            await self.hass.services.async_call(
+                                "media_player", "join",
+                                {"group_members": others},
+                                target={"entity_id": primary},
+                                blocking=True
+                            )
+                            _LOGGER.info("Speakers synced to %s", primary)
+                            # Play on primary only (group follows)
+                            await self.hass.services.async_call(
+                                "music_assistant", "play_media",
+                                {"media_id": query, "media_type": media_type, "enqueue": "replace"},
+                                target={"entity_id": primary},
+                                blocking=True
+                            )
+                        except Exception as join_err:
+                            _LOGGER.warning("Join not supported, playing on each speaker: %s", join_err)
+                            # Fallback: play on each speaker individually
+                            for player in target_players:
+                                await self.hass.services.async_call(
+                                    "music_assistant", "play_media",
+                                    {"media_id": query, "media_type": media_type, "enqueue": "replace"},
+                                    target={"entity_id": player},
+                                    blocking=True
+                                )
 
-                        # Now play on the primary (synced group will follow)
-                        await self.hass.services.async_call(
-                            "music_assistant", "play_media",
-                            {"media_id": query, "media_type": media_type, "enqueue": "replace"},
-                            target={"entity_id": primary},
-                            blocking=True
-                        )
                         if shuffle or media_type == "genre":
                             await self.hass.services.async_call(
                                 "media_player", "shuffle_set",
                                 {"shuffle": True},
-                                target={"entity_id": primary},
+                                target={"entity_id": target_players},
                                 blocking=True
                             )
                         room_names = [get_room_name(p) for p in target_players]
                         return {
                             "status": "playing_everywhere",
-                            "message": f"Now playing {query} synced on {len(target_players)} speakers: {', '.join(room_names)}. Party time!"
+                            "message": f"Now playing {query} on {len(target_players)} speakers: {', '.join(room_names)}. Party time!"
                         }
                     else:
                         # Single room playback
