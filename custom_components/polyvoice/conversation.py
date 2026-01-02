@@ -932,12 +932,12 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
                 }
             })
-            # Quick presence check - yes/no + brief description
+            # Quick presence check - returns complete response to relay
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "quick_camera_check",
-                    "description": "FAST presence check with brief description. Use for: 'is anyone in [location]', 'is someone at [location]', 'anyone outside?'. IMPORTANT: Always include the 'brief' description in your response to confirm what you see.",
+                    "description": "FAST presence check. Use for: 'is anyone in [location]', 'is someone at [location]?'. Returns a 'response' field - relay it to the user exactly as provided.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -3421,27 +3421,19 @@ class LMStudioConversationEntity(ConversationEntity):
                 # Get first sentence as brief description
                 brief = analysis.split('.')[0] + '.' if analysis else "Unable to analyze."
 
+                _LOGGER.info("Quick camera check - location: %s, anyone: %s, brief: %s",
+                           friendly_name, person_detected, brief)
+
+                # Return pre-formatted response - GPT must relay this
                 if identified:
                     names = ", ".join([p['name'] for p in identified])
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": True,
-                        "who": names,
-                        "brief": brief
-                    }
+                    full_response = f"Yes, I see {names} on the {friendly_name}. {brief}"
                 elif person_detected:
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": True,
-                        "who": "Unknown person",
-                        "brief": brief
-                    }
+                    full_response = f"Yes, there's someone on the {friendly_name}. {brief}"
                 else:
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": False,
-                        "brief": brief
-                    }
+                    full_response = f"No, I don't see anyone on the {friendly_name}. {brief}"
+
+                return {"response": full_response}
 
             except Exception as err:
                 _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
