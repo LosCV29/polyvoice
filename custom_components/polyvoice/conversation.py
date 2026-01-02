@@ -915,7 +915,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with AI vision analysis. RESPONSE FORMAT: For 'quick' presence checks, ALWAYS respond with: 1) Yes/No answer, 2) One sentence describing what you actually see (to confirm you checked). Example: 'No, I don't see anyone on the porch. I can see the porch furniture and a potted plant.' For 'detailed' mode, provide full scene description. Use 'quick' for presence questions, 'detailed' for 'check camera' requests.",
+                    "description": "Check a camera with AI vision analysis. CRITICAL: detail_level selection matters! For 'quick' results: respond with yes/no + one sentence of what you see. For 'detailed' results: provide FULL scene description with all visible details.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -926,14 +926,14 @@ class LMStudioConversationEntity(ConversationEntity):
                             "detail_level": {
                                 "type": "string",
                                 "enum": ["quick", "detailed"],
-                                "description": "Use 'quick' for yes/no presence questions ('is anyone there?'). Use 'detailed' for 'check camera' or scene description requests."
+                                "description": "IMPORTANT: 'quick' = ONLY for presence questions like 'is anyone there?', 'is someone outside?'. 'detailed' = for 'check the camera', 'show me', 'what do you see', 'what's happening'. When user says 'check' or 'look at' a camera, ALWAYS use 'detailed'."
                             },
                             "query": {
                                 "type": "string",
                                 "description": "Optional specific question about what to look for (e.g., 'is the baby sleeping', 'is there a package', 'is the car there'). If provided, implies 'detailed' mode."
                             }
                         },
-                        "required": ["location"]
+                        "required": ["location", "detail_level"]
                     }
                 }
             })
