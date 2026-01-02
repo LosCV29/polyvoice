@@ -820,22 +820,18 @@ class LMStudioConversationEntity(ConversationEntity):
         # ===== CAMERA CHECKS (if enabled) =====
         # Uses ha_video_vision integration for AI analysis
         if self.enable_cameras:
-            # Detailed camera check - full description + person identification
+            # Detailed camera check - full description
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with AI vision analysis. Returns scene description and activity detection. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me the [location]', 'is anyone at [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
+                    "description": "Check a camera with AI vision analysis. Returns scene description. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me the [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "location": {
                                 "type": "string",
                                 "description": "The camera location to check. Examples: 'garage', 'kitchen', 'nursery', 'living room', 'driveway', 'porch', 'backyard', 'front door', 'doorbell'"
-                            },
-                            "query": {
-                                "type": "string",
-                                "description": "Optional specific question about what to look for (e.g., 'is the baby sleeping', 'is there a package', 'is the car there')"
                             }
                         },
                         "required": ["location"]
@@ -843,12 +839,12 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
 
-            # Quick presence check - fast response, just person detection
+            # Quick camera check - fast response, brief description
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "quick_camera_check",
-                    "description": "FAST camera check - quickly confirms if anyone is present + one sentence description. Use for: 'is there anyone in [location]', 'is someone at the [location]', 'anyone in the [location]?'. Returns quick yes/no with brief description.",
+                    "description": "FAST camera check - returns a brief one-sentence description of the scene. Use for quick checks when user wants a fast response.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -3072,9 +3068,8 @@ class LMStudioConversationEntity(ConversationEntity):
         # CAMERA CHECK HANDLERS (via ha_video_vision integration)
         # =========================================================================
         elif tool_name == "check_camera":
-            # Detailed camera check - full description + person identification
+            # Detailed camera check - full description
             location = arguments.get("location", "").lower().strip()
-            query = arguments.get("query", "")
 
             if not location:
                 return {"error": "No camera location specified"}
@@ -3083,19 +3078,11 @@ class LMStudioConversationEntity(ConversationEntity):
             friendly_name = CAMERA_FRIENDLY_NAMES.get(location, location.replace("_", " ").title())
 
             try:
-                # Build service call data
-                service_data = {
-                    "camera": location,
-                    "duration": 3,
-                }
-                if query:
-                    service_data["user_query"] = query
-
-                # Call ha_video_vision integration service
+                # Call ha_video_vision integration service (no user_query to avoid hallucination)
                 result = await self.hass.services.async_call(
                     "ha_video_vision",
                     "analyze_camera",
-                    service_data,
+                    {"camera": location, "duration": 3},
                     blocking=True,
                     return_response=True,
                 )
