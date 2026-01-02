@@ -3415,16 +3415,37 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"location": friendly_name, "error": "Camera unavailable"}
 
                 identified = result.get("identified_people", [])
-                person_detected = result.get("person_detected", False) or bool(identified)
                 analysis = result.get("description", "")
+                analysis_lower = analysis.lower()
 
                 # Get first sentence as brief description
                 brief = analysis.split('.')[0] + '.' if analysis else "Unable to analyze."
 
-                _LOGGER.info("Quick camera check - location: %s, anyone: %s, brief: %s",
-                           friendly_name, person_detected, brief)
+                # DON'T trust person_detected flag - parse the actual text
+                # Check for explicit "no people" indicators in the description
+                no_people_phrases = [
+                    "no people", "no one", "nobody", "no person", "no humans",
+                    "no visible people", "aren't any people", "are no people",
+                    "no individuals", "empty of people", "devoid of people",
+                    "no people visible", "no people present", "no one is visible"
+                ]
 
-                # Return pre-formatted response - GPT must relay this
+                # If description says no people, trust that over the flag
+                text_says_no_people = any(phrase in analysis_lower for phrase in no_people_phrases)
+
+                # Only trust person_detected if text doesn't contradict it
+                if identified:
+                    person_detected = True
+                elif text_says_no_people:
+                    person_detected = False
+                else:
+                    # Only fall back to flag if text is ambiguous
+                    person_detected = result.get("person_detected", False)
+
+                _LOGGER.info("Quick camera check - location: %s, flag: %s, text_says_no: %s, final: %s, brief: %s",
+                           friendly_name, result.get("person_detected"), text_says_no_people, person_detected, brief)
+
+                # Return pre-formatted response
                 if identified:
                     names = ", ".join([p['name'] for p in identified])
                     full_response = f"Yes, I see {names} on the {friendly_name}. {brief}"
