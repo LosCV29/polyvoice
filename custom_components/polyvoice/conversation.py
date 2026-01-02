@@ -2050,17 +2050,37 @@ class LMStudioConversationEntity(ConversationEntity):
                 headers = {"User-Agent": "HomeAssistant-PolyVoice/1.0"}
                 team_key = team_name.lower().strip()
 
+                # Check for league-specific keywords to prioritize search
+                champions_league_keywords = ["champions league", "ucl", "champions"]
+                prioritize_ucl = any(kw in team_key for kw in champions_league_keywords)
+                # Clean team name if it contains league keywords
+                for kw in champions_league_keywords:
+                    team_key = team_key.replace(kw, "").strip()
+
                 # Search for team in major leagues directly (search API is deprecated)
-                leagues_to_try = [
-                    ("basketball", "nba"),
-                    ("football", "nfl"),
-                    ("baseball", "mlb"),
-                    ("hockey", "nhl"),
-                    ("soccer", "eng.1"),  # Premier League
-                    ("soccer", "uefa.champions"),  # Champions League
-                    ("football", "college-football"),  # NCAA Football
-                    ("basketball", "mens-college-basketball"),  # NCAA Basketball
-                ]
+                # Order matters - first match wins (unless UCL is prioritized)
+                if prioritize_ucl:
+                    leagues_to_try = [
+                        ("soccer", "uefa.champions"),  # Champions League FIRST
+                        ("soccer", "eng.1"),  # Premier League
+                        ("basketball", "nba"),
+                        ("football", "nfl"),
+                        ("baseball", "mlb"),
+                        ("hockey", "nhl"),
+                        ("football", "college-football"),  # NCAA Football
+                        ("basketball", "mens-college-basketball"),  # NCAA Basketball
+                    ]
+                else:
+                    leagues_to_try = [
+                        ("basketball", "nba"),
+                        ("football", "nfl"),
+                        ("baseball", "mlb"),
+                        ("hockey", "nhl"),
+                        ("soccer", "eng.1"),  # Premier League
+                        ("soccer", "uefa.champions"),  # Champions League
+                        ("football", "college-football"),  # NCAA Football
+                        ("basketball", "mens-college-basketball"),  # NCAA Basketball
+                    ]
 
                 team_found = False
                 url = None
