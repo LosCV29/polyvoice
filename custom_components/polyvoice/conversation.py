@@ -1663,6 +1663,14 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> dict[str, Any]:
         """Execute a tool."""
         try:
+            # Handle arguments as JSON string (GPT-5 Responses API returns string)
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments) if arguments else {}
+                except json.JSONDecodeError:
+                    _LOGGER.warning("Failed to parse tool arguments as JSON: %s", arguments)
+                    arguments = {}
+
             # Try HA services directly (domain.service format)
             if "." in tool_name:
                 domain, service = tool_name.split(".", 1)
