@@ -915,7 +915,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with AI vision analysis. Use for: 'check the [location] camera', 'what's happening in [location]', 'who's at the [location]', 'is anyone at [location]', 'is someone in [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
+                    "description": "Check a camera with AI vision analysis. IMPORTANT RESPONSE FORMAT: For 'quick' results, respond with direct YES/NO confirmation first, then the brief description. For 'detailed' results, provide a thorough description of EVERYTHING visible. Use detail_level='quick' for presence questions ('is anyone outside?', 'is someone at the door?'). Use detail_level='detailed' for scene requests ('check the backyard camera', 'what's happening in the garage', 'show me the porch').",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -926,7 +926,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             "detail_level": {
                                 "type": "string",
                                 "enum": ["quick", "detailed"],
-                                "description": "Level of detail: 'quick' for fast presence check (is anyone there?), 'detailed' for full scene description + facial recognition. Default: 'quick' for presence questions, 'detailed' for scene/activity questions."
+                                "description": "REQUIRED. Use 'quick' ONLY for yes/no presence questions like 'is anyone there?'. Use 'detailed' for ANY request to 'check' a camera or describe what's happening - this provides comprehensive scene analysis."
                             },
                             "query": {
                                 "type": "string",
@@ -3351,11 +3351,19 @@ class LMStudioConversationEntity(ConversationEntity):
 
             try:
                 # Build service call data with duration based on detail level
+                # Detailed mode gets longer duration for better analysis
                 service_data = {
                     "camera": location,
-                    "duration": 3 if detail_level == "detailed" else 2,
+                    "duration": 5 if detail_level == "detailed" else 2,
                 }
-                if query:
+
+                # For detailed mode, ask for comprehensive analysis
+                if detail_level == "detailed":
+                    if query:
+                        service_data["user_query"] = query
+                    else:
+                        service_data["user_query"] = "Provide a comprehensive, detailed description of everything visible in this scene. Describe all people (appearance, clothing, actions, location in frame), vehicles, objects, lighting conditions, weather if visible, and any activity or movement. Be thorough and specific."
+                elif query:
                     service_data["user_query"] = query
 
                 # Call ha_video_vision integration service
@@ -3380,41 +3388,50 @@ class LMStudioConversationEntity(ConversationEntity):
                 person_detected = result.get("person_detected", False) or bool(identified)
 
                 if detail_level == "detailed":
-                    # Full detailed response
+                    # Full detailed response - give the LLM everything
                     response = {
                         "location": friendly_name,
                         "status": "checked",
                         "person_detected": person_detected,
-                        "description": analysis
+                        "full_scene_description": analysis,
+                        "response_instruction": "Provide a thorough description of everything in the scene to the user. Include all details about people, objects, vehicles, and activity."
                     }
                     if identified:
-                        people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
-                        response["identified"] = people_str
+                        people_list = [f"{p['name']} (confidence: {p['confidence']}%)" for p in identified]
+                        response["identified_people"] = people_list
+                        response["facial_recognition_note"] = f"Recognized: {', '.join([p['name'] for p in identified])}"
                     return response
                 else:
-                    # Quick presence check response
-                    brief = analysis.split('.')[0] + '.' if analysis else "No activity."
+                    # Quick presence check - give clear YES/NO data
+                    # Get a concise one-sentence summary
+                    brief = analysis.split('.')[0] + '.' if analysis else "Area appears clear."
 
                     if identified:
-                        names = ", ".join([p['name'] for p in identified])
+                        names = [p['name'] for p in identified]
                         return {
                             "location": friendly_name,
-                            "anyone_there": True,
-                            "who": names,
-                            "brief": brief
+                            "presence_detected": "YES",
+                            "person_identified": True,
+                            "who": ", ".join(names),
+                            "one_sentence_summary": brief,
+                            "response_instruction": "Start with 'Yes' and state who is there, then give the one sentence summary."
                         }
                     elif person_detected:
                         return {
                             "location": friendly_name,
-                            "anyone_there": True,
-                            "who": "Unknown person",
-                            "brief": brief
+                            "presence_detected": "YES",
+                            "person_identified": False,
+                            "who": "Unknown person (not recognized)",
+                            "one_sentence_summary": brief,
+                            "response_instruction": "Start with 'Yes, there is someone there' (unknown person), then give the one sentence summary."
                         }
                     else:
                         return {
                             "location": friendly_name,
-                            "anyone_there": False,
-                            "brief": brief
+                            "presence_detected": "NO",
+                            "person_identified": False,
+                            "one_sentence_summary": brief,
+                            "response_instruction": "Start with 'No, I don't see anyone' at that location, then give the one sentence summary of what you DO see."
                         }
 
             except Exception as err:
