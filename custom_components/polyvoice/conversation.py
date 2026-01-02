@@ -802,7 +802,7 @@ class LMStudioConversationEntity(ConversationEntity):
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "team_name": {"type": "string", "description": "Team name (e.g., 'Florida Panthers', 'Miami Heat', 'Manchester City', 'Liverpool', 'Alabama Crimson Tide', 'Duke Blue Devils')"},
+                            "team_name": {"type": "string", "description": "Team name. IMPORTANT: If user mentions a specific league (Champions League, UCL, Premier League, etc.), include it! Examples: 'Liverpool Champions League', 'Man City UCL', 'Real Madrid Champions League', 'Miami Heat', 'Duke Blue Devils'"},
                             "query_type": {"type": "string", "enum": ["last_game", "next_game", "standings", "both"], "description": "What info to get: 'last_game' for recent result, 'next_game' for upcoming, 'standings' for league position, 'both' for last and next games (default)"}
                         },
                         "required": ["team_name"]
