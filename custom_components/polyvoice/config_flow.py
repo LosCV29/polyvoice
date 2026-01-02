@@ -24,6 +24,8 @@ from .const import (
     CONF_TEMPERATURE,
     CONF_MAX_TOKENS,
     CONF_TOP_P,
+    CONF_REASONING_EFFORT,
+    CONF_USE_RESPONSES_API,
     ALL_PROVIDERS,
     PROVIDER_NAMES,
     PROVIDER_BASE_URLS,
@@ -44,6 +46,9 @@ from .const import (
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
+    DEFAULT_REASONING_EFFORT,
+    DEFAULT_USE_RESPONSES_API,
+    REASONING_EFFORT_OPTIONS,
     # Native intents
     CONF_USE_NATIVE_INTENTS,
     CONF_EXCLUDED_INTENTS,
@@ -564,6 +569,9 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         api_key = current.get(CONF_API_KEY, "")
         current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
 
+        # Check if current model is GPT-5
+        is_gpt5 = current_model.lower().startswith("gpt-5") or "gpt-5" in current_model.lower()
+
         # Fetch available models from provider
         available_models, _ = await fetch_available_models(provider, base_url, api_key)
 
@@ -603,6 +611,29 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_TOP_P,
             default=current.get(CONF_TOP_P, DEFAULT_TOP_P),
         )] = vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0))
+
+        # GPT-5 specific settings (show for OpenAI, Azure, OpenRouter with GPT-5 models)
+        if provider in [PROVIDER_OPENAI, PROVIDER_AZURE, PROVIDER_OPENROUTER] or is_gpt5:
+            # Reasoning effort dropdown
+            reasoning_options = [
+                selector.SelectOptionDict(value=opt, label=opt.title())
+                for opt in REASONING_EFFORT_OPTIONS
+            ]
+            schema_dict[vol.Optional(
+                CONF_REASONING_EFFORT,
+                default=current.get(CONF_REASONING_EFFORT, DEFAULT_REASONING_EFFORT),
+            )] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=reasoning_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+
+            # Use Responses API toggle (recommended for GPT-5)
+            schema_dict[vol.Optional(
+                CONF_USE_RESPONSES_API,
+                default=current.get(CONF_USE_RESPONSES_API, DEFAULT_USE_RESPONSES_API),
+            )] = cv.boolean
 
         return self.async_show_form(
             step_id="model",

@@ -52,11 +52,14 @@
       },
       "model": {
         "title": "Model Settings",
+        "description": "Configure model parameters. GPT-5 settings appear when using OpenAI/Azure/OpenRouter.",
         "data": {
           "model": "Model Name",
           "temperature": "Temperature (0.0 - 2.0)",
           "max_tokens": "Max Tokens",
-          "top_p": "Top P (0.0 - 1.0)"
+          "top_p": "Top P (0.0 - 1.0)",
+          "reasoning_effort": "GPT-5 Reasoning Effort (none=fastest, xhigh=smartest)",
+          "use_responses_api": "Use Responses API (recommended for GPT-5)"
         }
       },
       "features": {

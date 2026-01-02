@@ -14,6 +14,10 @@ CONF_TEMPERATURE: Final = "temperature"
 CONF_MAX_TOKENS: Final = "max_tokens"
 CONF_TOP_P: Final = "top_p"
 
+# GPT-5 specific settings
+CONF_REASONING_EFFORT: Final = "reasoning_effort"
+CONF_USE_RESPONSES_API: Final = "use_responses_api"
+
 # Provider choices
 PROVIDER_LM_STUDIO: Final = "lm_studio"
 PROVIDER_OPENAI: Final = "openai"
@@ -61,26 +65,36 @@ PROVIDER_BASE_URLS: Final = {
 # Default models per provider
 PROVIDER_DEFAULT_MODELS: Final = {
     PROVIDER_LM_STUDIO: "local-model",
-    PROVIDER_OPENAI: "gpt-4o-mini",
+    PROVIDER_OPENAI: "gpt-5",
     PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
     PROVIDER_GOOGLE: "gemini-1.5-flash",
     PROVIDER_GROQ: "llama-3.3-70b-versatile",
-    PROVIDER_OPENROUTER: "openai/gpt-4o-mini",
-    PROVIDER_AZURE: "gpt-4o-mini",  # Deployment name configured in Azure
+    PROVIDER_OPENROUTER: "openai/gpt-5",
+    PROVIDER_AZURE: "gpt-5",  # Deployment name configured in Azure
     PROVIDER_OLLAMA: "llama3.2",
 }
 
 # Suggested models per provider (for UI hints)
 PROVIDER_MODELS: Final = {
     PROVIDER_LM_STUDIO: ["local-model", "qwen2.5-7b-instruct", "llama-3.2-3b"],
-    PROVIDER_OPENAI: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    PROVIDER_OPENAI: ["gpt-5", "gpt-5.2", "gpt-5-mini", "gpt-4o", "gpt-4o-mini"],
     PROVIDER_ANTHROPIC: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
     PROVIDER_GOOGLE: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"],
     PROVIDER_GROQ: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-    PROVIDER_OPENROUTER: ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5"],
-    PROVIDER_AZURE: ["gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-35-turbo"],
+    PROVIDER_OPENROUTER: ["openai/gpt-5", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5"],
+    PROVIDER_AZURE: ["gpt-5", "gpt-4o", "gpt-4o-mini", "gpt-4"],
     PROVIDER_OLLAMA: ["llama3.2", "llama3.1", "mistral", "codellama", "phi3"],
 }
+
+# GPT-5 reasoning effort levels
+REASONING_EFFORT_OPTIONS: Final = [
+    "none",      # No reasoning (fastest, GPT-5.1+ default)
+    "minimal",   # Very few reasoning tokens
+    "low",       # Light reasoning
+    "medium",    # Balanced (older models default)
+    "high",      # More reasoning
+    "xhigh",     # Maximum reasoning (GPT-5.2+)
+]
 
 # Providers that use OpenAI-compatible API
 OPENAI_COMPATIBLE_PROVIDERS: Final = [
@@ -99,6 +113,10 @@ DEFAULT_MODEL: Final = "local-model"
 DEFAULT_TEMPERATURE: Final = 0.7
 DEFAULT_MAX_TOKENS: Final = 2000
 DEFAULT_TOP_P: Final = 0.95
+
+# GPT-5 defaults
+DEFAULT_REASONING_EFFORT: Final = "medium"  # Balanced default
+DEFAULT_USE_RESPONSES_API: Final = True  # Use Responses API for GPT-5 (recommended)
 
 # =============================================================================
 # FEATURE TOGGLES - Enable/disable function categories

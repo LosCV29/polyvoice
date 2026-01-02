@@ -35,6 +35,8 @@ from .const import (
     CONF_TEMPERATURE,
     CONF_MAX_TOKENS,
     CONF_TOP_P,
+    CONF_REASONING_EFFORT,
+    CONF_USE_RESPONSES_API,
     # Provider constants
     PROVIDER_LM_STUDIO,
     PROVIDER_OPENAI,
@@ -103,6 +105,8 @@ from .const import (
     DEFAULT_ENABLE_MUSIC,
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
+    DEFAULT_REASONING_EFFORT,
+    DEFAULT_USE_RESPONSES_API,
     CAMERA_FRIENDLY_NAMES,
     ALL_NATIVE_INTENTS,
     # Thermostat settings
@@ -445,7 +449,14 @@ class LMStudioConversationEntity(ConversationEntity):
         self.temperature = config.get(CONF_TEMPERATURE, 0.7)
         self.max_tokens = config.get(CONF_MAX_TOKENS, 2000)
         self.top_p = config.get(CONF_TOP_P, 0.95)
-        
+
+        # GPT-5 specific settings
+        self.reasoning_effort = config.get(CONF_REASONING_EFFORT, DEFAULT_REASONING_EFFORT)
+        self.use_responses_api = config.get(CONF_USE_RESPONSES_API, DEFAULT_USE_RESPONSES_API)
+
+        # Check if model is GPT-5
+        self.is_gpt5 = self.model.lower().startswith("gpt-5") or "gpt-5" in self.model.lower()
+
         # Get base URL (use provider default if not specified)
         base_url = config.get(CONF_BASE_URL)
         if not base_url:
@@ -1107,6 +1118,9 @@ class LMStudioConversationEntity(ConversationEntity):
             return await self._call_google(tools, user_input, max_tokens)
         else:
             # OpenAI-compatible providers (LM Studio, OpenAI, Groq, OpenRouter, Azure, Ollama)
+            # Use Responses API for GPT-5 models when enabled (recommended by OpenAI)
+            if self.is_gpt5 and self.use_responses_api and self.provider in [PROVIDER_OPENAI, PROVIDER_AZURE, PROVIDER_OPENROUTER]:
+                return await self._call_openai_responses_api(tools, user_input, max_tokens)
             return await self._call_openai_compatible(tools, user_input, max_tokens)
 
     async def _call_anthropic(
@@ -1468,6 +1482,161 @@ class LMStudioConversationEntity(ConversationEntity):
             
             break
         
+        return full_response if full_response else "I apologize, but I couldn't complete that request."
+
+    async def _call_openai_responses_api(
+        self,
+        tools: list[dict],
+        user_input: conversation.ConversationInput,
+        max_tokens: int,
+    ) -> str:
+        """Call OpenAI Responses API for GPT-5 models (recommended for better performance)."""
+        # Build input messages for Responses API format
+        input_messages = []
+
+        # Add user message
+        input_messages.append({
+            "role": "user",
+            "content": user_input.text,
+        })
+
+        # Prepare instructions (system prompt) for Responses API
+        instructions = ""
+        if self.system_prompt:
+            current_date = datetime.now().strftime("%A, %B %d, %Y")
+            instructions = self.system_prompt.replace(
+                "[CURRENT_DATE_WILL_BE_INJECTED_HERE]",
+                f"TODAY'S DATE: {current_date}"
+            )
+
+        max_iterations = 5
+        full_response = ""
+        called_tools = set()
+
+        for iteration in range(max_iterations):
+            # Build the Responses API request
+            request_data = {
+                "model": self.model,
+                "input": input_messages,
+                "max_output_tokens": max_tokens,
+            }
+
+            # Add instructions (system prompt)
+            if instructions:
+                request_data["instructions"] = instructions
+
+            # Add reasoning configuration for GPT-5
+            if self.reasoning_effort and self.reasoning_effort != "none":
+                request_data["reasoning"] = {"effort": self.reasoning_effort}
+
+            # Add tools if available
+            if tools:
+                request_data["tools"] = tools
+
+            self._track_api_call("llm")
+
+            try:
+                # Call the Responses API endpoint
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                }
+
+                async with self._session.post(
+                    f"{self.base_url.rstrip('/v1')}/v1/responses",
+                    json=request_data,
+                    headers=headers,
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        _LOGGER.error("Responses API error %d: %s", resp.status, error_text)
+                        # Fall back to Chat Completions if Responses API fails
+                        _LOGGER.info("Falling back to Chat Completions API")
+                        return await self._call_openai_compatible(tools, user_input, max_tokens)
+
+                    response_data = await resp.json()
+
+                # Extract the response
+                output = response_data.get("output", [])
+                output_text = response_data.get("output_text", "")
+
+                # Check for tool calls in the response
+                tool_calls = []
+                text_content = ""
+
+                for item in output:
+                    if item.get("type") == "function_call":
+                        tool_calls.append(item)
+                    elif item.get("type") == "message":
+                        content = item.get("content", [])
+                        for c in content:
+                            if c.get("type") == "output_text":
+                                text_content += c.get("text", "")
+
+                # If no structured output, use output_text
+                if not text_content and output_text:
+                    text_content = output_text
+
+                if tool_calls:
+                    # Process tool calls
+                    _LOGGER.info("Processing %d tool call(s) from Responses API", len(tool_calls))
+
+                    # Filter duplicates
+                    unique_tool_calls = []
+                    for tc in tool_calls:
+                        tool_name = tc.get("name", "")
+                        tool_args = json.dumps(tc.get("arguments", {}), sort_keys=True)
+                        tool_key = f"{tool_name}:{tool_args}"
+                        if tool_key not in called_tools:
+                            called_tools.add(tool_key)
+                            unique_tool_calls.append(tc)
+
+                    # Execute tools in parallel
+                    tool_tasks = []
+                    for tc in unique_tool_calls:
+                        tool_name = tc.get("name", "")
+                        arguments = tc.get("arguments", {})
+                        _LOGGER.info("Tool call: %s(%s)", tool_name, arguments)
+                        tool_tasks.append(self._execute_tool(tool_name, arguments, user_input))
+
+                    tool_results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+                    # Add tool results to messages for next iteration
+                    for i, tc in enumerate(unique_tool_calls):
+                        result = tool_results[i]
+                        if isinstance(result, Exception):
+                            result_data = {"error": str(result)}
+                        else:
+                            result_data = result
+
+                        # Add function call and result to input
+                        input_messages.append({
+                            "type": "function_call",
+                            "call_id": tc.get("call_id", f"call_{i}"),
+                            "name": tc.get("name"),
+                            "arguments": tc.get("arguments", {}),
+                        })
+                        input_messages.append({
+                            "type": "function_call_output",
+                            "call_id": tc.get("call_id", f"call_{i}"),
+                            "output": json.dumps(result_data) if isinstance(result_data, dict) else str(result_data),
+                        })
+
+                    continue  # Continue to next iteration to get final response
+
+                # No tool calls, we have the final response
+                if text_content:
+                    full_response += text_content
+                    return full_response
+
+            except Exception as e:
+                _LOGGER.error("Responses API exception: %s", e, exc_info=True)
+                # Fall back to Chat Completions
+                _LOGGER.info("Falling back to Chat Completions API due to error")
+                return await self._call_openai_compatible(tools, user_input, max_tokens)
+
+            break
+
         return full_response if full_response else "I apologize, but I couldn't complete that request."
 
     async def _execute_tool(
