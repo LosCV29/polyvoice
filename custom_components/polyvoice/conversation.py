@@ -910,30 +910,43 @@ class LMStudioConversationEntity(ConversationEntity):
         # ===== CAMERA CHECKS (if enabled) =====
         # Uses ha_video_vision integration for AI analysis
         if self.enable_cameras:
-            # Unified camera check with detail level
+            # Detailed camera check - full scene description
             tools.append({
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with AI vision analysis. CRITICAL: detail_level selection matters! For 'quick' results: respond with yes/no + one sentence of what you see. For 'detailed' results: provide FULL scene description with all visible details.",
+                    "description": "Get DETAILED description of camera view. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me [location]'. Returns full scene analysis.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "location": {
                                 "type": "string",
-                                "description": "The camera location to check. Examples: 'garage', 'kitchen', 'nursery', 'living room', 'driveway', 'porch', 'backyard', 'front door', 'doorbell'"
-                            },
-                            "detail_level": {
-                                "type": "string",
-                                "enum": ["quick", "detailed"],
-                                "description": "IMPORTANT: 'quick' = ONLY for presence questions like 'is anyone there?', 'is someone outside?'. 'detailed' = for 'check the camera', 'show me', 'what do you see', 'what's happening'. When user says 'check' or 'look at' a camera, ALWAYS use 'detailed'."
+                                "description": "Camera location: garage, kitchen, driveway, porch, backyard, front door, etc."
                             },
                             "query": {
                                 "type": "string",
-                                "description": "Optional specific question about what to look for (e.g., 'is the baby sleeping', 'is there a package', 'is the car there'). If provided, implies 'detailed' mode."
+                                "description": "Optional specific question (e.g., 'is the car there')"
                             }
                         },
-                        "required": ["location", "detail_level"]
+                        "required": ["location"]
+                    }
+                }
+            })
+            # Quick presence check - yes/no + brief description
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "quick_camera_check",
+                    "description": "FAST presence check with brief description. Use for: 'is anyone in [location]', 'is someone at [location]', 'anyone outside?'. IMPORTANT: Always include the 'brief' description in your response to confirm what you see.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "Camera location: garage, driveway, porch, backyard, front door, etc."
+                            }
+                        },
+                        "required": ["location"]
                     }
                 }
             })
@@ -3329,45 +3342,27 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": f"Failed to get device history: {str(err)}"}
         
         # =========================================================================
-        # CAMERA CHECK HANDLER (via ha_video_vision integration)
+        # DETAILED CAMERA CHECK (via ha_video_vision integration)
         # =========================================================================
         elif tool_name == "check_camera":
-            # Unified camera check - supports both quick and detailed modes
             location = arguments.get("location", "").lower().strip()
             query = arguments.get("query", "")
-            detail_level = arguments.get("detail_level", "")
-
-            # If query provided, default to detailed mode
-            if query and not detail_level:
-                detail_level = "detailed"
-            elif not detail_level:
-                detail_level = "quick"
 
             if not location:
                 return {"error": "No camera location specified"}
 
-            # Get friendly name for display
             friendly_name = CAMERA_FRIENDLY_NAMES.get(location, location.replace("_", " ").title())
 
             try:
-                # Build service call data with duration based on detail level
                 service_data = {
                     "camera": location,
-                    "duration": 5 if detail_level == "detailed" else 2,
+                    "duration": 5,
                 }
-
-                # Customize prompt based on mode
-                if detail_level == "detailed":
-                    if query:
-                        service_data["user_query"] = query
-                    else:
-                        # Describe the scene naturally, confirm people at the end
-                        service_data["user_query"] = "Describe everything visible in detail: all people (appearance, clothing, what they're doing), vehicles, objects, lighting, and any activity. At the end, clearly state how many people are visible (or none)."
+                if query:
+                    service_data["user_query"] = query
                 else:
-                    # Quick mode: explicit YES/NO presence detection
-                    service_data["user_query"] = "Are there any people visible? Answer with YES or NO first, then describe what you see in one sentence."
+                    service_data["user_query"] = "Describe everything visible in detail: people, vehicles, objects, lighting, activity. State how many people are visible at the end."
 
-                # Call ha_video_vision integration service
                 result = await self.hass.services.async_call(
                     "ha_video_vision",
                     "analyze_camera",
@@ -3377,83 +3372,80 @@ class LMStudioConversationEntity(ConversationEntity):
                 )
 
                 if not result or not result.get("success"):
-                    error_msg = result.get('error', 'Unknown error') if result else 'Service unavailable'
-                    return {
-                        "location": friendly_name,
-                        "status": "unavailable",
-                        "error": f"Could not access {friendly_name} camera: {error_msg}"
-                    }
+                    return {"location": friendly_name, "error": "Camera unavailable"}
 
                 identified = result.get("identified_people", [])
                 analysis = result.get("description", "Unable to analyze")
+                person_detected = result.get("person_detected", False) or bool(identified)
 
-                # Parse person detection from actual analysis text (more reliable than flag)
-                analysis_lower = analysis.lower()
-
-                # Check for explicit NO people indicators
-                no_people_phrases = ["no people", "no one", "nobody", "no person", "no humans",
-                                     "no visible people", "aren't any people", "are no people",
-                                     "don't see any", "no individuals", "empty", "unoccupied",
-                                     "no one is", "zero people", "devoid of people"]
-
-                # Determine presence: identified people are ground truth
+                response = {
+                    "location": friendly_name,
+                    "description": analysis,
+                    "people_present": person_detected
+                }
                 if identified:
-                    person_detected = True
-                elif any(phrase in analysis_lower for phrase in no_people_phrases):
-                    person_detected = False
-                elif analysis_lower.strip().startswith("no"):
-                    # Vision model responded with "No, ..." to our YES/NO question
-                    person_detected = False
-                elif analysis_lower.strip().startswith("yes"):
-                    person_detected = True
-                else:
-                    # Fall back to the flag only if text is inconclusive
-                    person_detected = result.get("person_detected", False)
-
-                if detail_level == "detailed":
-                    # Full scene description, confirm people at end
-                    response = {
-                        "location": friendly_name,
-                        "scene_description": analysis,
-                        "people_present": "Yes" if person_detected else "No"
-                    }
-                    if identified:
-                        response["recognized"] = [f"{p['name']} ({p['confidence']}%)" for p in identified]
-                    return response
-                else:
-                    # Quick presence check - clear YES/NO with description
-                    # Clean up the summary - remove YES/NO prefix if vision model added it
-                    summary = analysis
-                    for prefix in ["yes.", "yes,", "yes:", "yes -", "no.", "no,", "no:", "no -"]:
-                        if summary.lower().startswith(prefix):
-                            summary = summary[len(prefix):].strip()
-                            break
-                    # Take first sentence for brief description
-                    if '.' in summary:
-                        summary = summary.split('.')[0] + '.'
-
-                    # Return a single "answer" field - LLM should relay this directly
-                    if identified:
-                        names = [p['name'] for p in identified]
-                        return {
-                            "answer": f"Yes, I see {', '.join(names)} in the {friendly_name}. {summary}"
-                        }
-                    elif person_detected:
-                        return {
-                            "answer": f"Yes, there's someone in the {friendly_name}. {summary}"
-                        }
-                    else:
-                        return {
-                            "answer": f"No, I don't see anyone in the {friendly_name}. {summary}"
-                        }
+                    response["recognized"] = [f"{p['name']} ({p['confidence']}%)" for p in identified]
+                return response
 
             except Exception as err:
                 _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
-                return {
-                    "location": friendly_name,
-                    "status": "error",
-                    "error": f"Failed to check {friendly_name} camera: {str(err)}"
-                }
+                return {"location": friendly_name, "error": str(err)}
+
+        # =========================================================================
+        # QUICK CAMERA CHECK - presence detection with brief description
+        # =========================================================================
+        elif tool_name == "quick_camera_check":
+            location = arguments.get("location", "").lower().strip()
+
+            if not location:
+                return {"error": "No camera location specified"}
+
+            friendly_name = CAMERA_FRIENDLY_NAMES.get(location, location.replace("_", " ").title())
+
+            try:
+                result = await self.hass.services.async_call(
+                    "ha_video_vision",
+                    "analyze_camera",
+                    {"camera": location, "duration": 2},
+                    blocking=True,
+                    return_response=True,
+                )
+
+                if not result or not result.get("success"):
+                    return {"location": friendly_name, "error": "Camera unavailable"}
+
+                identified = result.get("identified_people", [])
+                person_detected = result.get("person_detected", False) or bool(identified)
+                analysis = result.get("description", "")
+
+                # Get first sentence as brief description
+                brief = analysis.split('.')[0] + '.' if analysis else "Unable to analyze."
+
+                if identified:
+                    names = ", ".join([p['name'] for p in identified])
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": True,
+                        "who": names,
+                        "brief": brief
+                    }
+                elif person_detected:
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": True,
+                        "who": "Unknown person",
+                        "brief": brief
+                    }
+                else:
+                    return {
+                        "location": friendly_name,
+                        "anyone_there": False,
+                        "brief": brief
+                    }
+
+            except Exception as err:
+                _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
+                return {"location": friendly_name, "error": str(err)}
 
         elif tool_name == "get_restaurant_recommendations":
             query = arguments.get("query", "")
