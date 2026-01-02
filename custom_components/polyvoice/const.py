@@ -146,9 +146,6 @@ CONF_THERMOSTAT_MAX_TEMP: Final = "thermostat_max_temp"
 CONF_THERMOSTAT_TEMP_STEP: Final = "thermostat_temp_step"
 CONF_THERMOSTAT_USE_CELSIUS: Final = "thermostat_use_celsius"
 
-# Event names - user-configurable
-CONF_FACIAL_RECOGNITION_EVENT: Final = "facial_recognition_event"
-
 # Default camera friendly names mapping (voice aliases -> display_name)
 # Supports multiple spellings/variations for voice commands
 # Users configure actual cameras via CONF_CAMERA_ENTITIES; ha_video_vision handles resolution
@@ -214,9 +211,6 @@ DEFAULT_THERMOSTAT_USE_CELSIUS: Final = False
 DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS: Final = 15
 DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS: Final = 30
 DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
-
-# Event name defaults
-DEFAULT_FACIAL_RECOGNITION_EVENT: Final = "polyvoice_facial_recognition"
 
 # =============================================================================
 # NATIVE INTENTS

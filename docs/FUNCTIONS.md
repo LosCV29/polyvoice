@@ -128,8 +128,6 @@ everywhere:media_player.whole_home_group
 
 **Returns:**
 - AI description of the scene
-- Identified people (with facial recognition)
-- Person detected flag
 
 ---
 

@@ -160,7 +160,6 @@ For AI camera vision, install the companion:
 ### [HA Video Vision](https://github.com/LosCV29/ha-video-vision)
 
 - Real **video analysis** (not snapshots!)
-- **Facial recognition** — "Who's at the door?"
 - Works with any RTSP camera
 
 ---

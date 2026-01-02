@@ -117,9 +117,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
-    # Event names
-    CONF_FACIAL_RECOGNITION_EVENT,
-    DEFAULT_FACIAL_RECOGNITION_EVENT,
     # Gaming mode
     CONF_GAMING_MODE_ENTITY,
     CONF_CLOUD_FALLBACK_PROVIDER,
@@ -346,79 +343,6 @@ async def async_setup_entry(
     # Store agent reference for service calls
     hass.data.setdefault("polyvoice", {})
     hass.data["polyvoice"][config_entry.entry_id] = agent
-    
-    # Register facial recognition service
-    async def handle_facial_recognition(call):
-        """Handle facial recognition service call."""
-        camera = call.data.get("camera", "porch")
-        notify = call.data.get("notify", True)
-        
-        _LOGGER.info("Facial recognition service called for camera: %s", camera)
-        
-        # Find the agent
-        for entry_id, stored_agent in hass.data.get("polyvoice", {}).items():
-            if hasattr(stored_agent, "_check_single_camera"):
-                # Ensure session is available
-                if stored_agent._session is None:
-                    stored_agent._session = async_get_clientsession(hass)
-                
-                result = await stored_agent._check_single_camera(camera, "")
-                
-                if notify and "analysis" in result:
-                    # Get identified people
-                    identified = result.get("identified_people", [])
-                    if identified:
-                        names = [p["name"] for p in identified]
-                        title = f"🏠 {', '.join(names)} at {camera}"
-                    else:
-                        title = f"📷 Person at {camera}"
-
-                    # Send notification using configured service
-                    notification_service = getattr(stored_agent, 'notification_service', '')
-                    if notification_service:
-                        try:
-                            await hass.services.async_call(
-                                "notify", notification_service,
-                                {
-                                    "title": title,
-                                    "message": result["analysis"],
-                                    "data": {
-                                        "image": f"/api/camera_proxy/camera.{camera}_camera"
-                                    }
-                                }
-                            )
-                        except Exception as e:
-                            _LOGGER.warning("Could not send notification: %s", e)
-                    else:
-                        _LOGGER.debug("No notification service configured")
-                
-                # Fire event for other automations (use configurable event name)
-                event_name = getattr(stored_agent, 'facial_recognition_event', DEFAULT_FACIAL_RECOGNITION_EVENT)
-                hass.bus.async_fire(event_name, {
-                    "camera": camera,
-                    "identified_people": result.get("identified_people", []),
-                    "analysis": result.get("analysis", ""),
-                    "is_known_person": len(result.get("identified_people", [])) > 0
-                })
-                
-                _LOGGER.info("Facial recognition complete for %s: %s", camera, result)
-                return result
-        
-        _LOGGER.warning("No LM Studio agent found for facial recognition")
-        return {"error": "Agent not found"}
-    
-    # Register the service
-    hass.services.async_register(
-        "polyvoice",
-        "facial_recognition",
-        handle_facial_recognition,
-        schema=vol.Schema({
-            vol.Optional("camera", default="porch"): str,
-            vol.Optional("notify", default=True): bool,
-        })
-    )
-    
-    _LOGGER.info("Registered polyvoice.facial_recognition service")
 
 
 class LMStudioConversationEntity(ConversationEntity):
@@ -616,9 +540,6 @@ class LMStudioConversationEntity(ConversationEntity):
         self.thermostat_min_temp = int(configured_min if configured_min is not None else default_min)
         self.thermostat_max_temp = int(configured_max if configured_max is not None else default_max)
         self.thermostat_temp_step = int(configured_step if configured_step is not None else default_step)
-
-        # Event names (user-configurable)
-        self.facial_recognition_event = config.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT)
 
         # Build camera friendly names mapping from configured camera entities
         # camera.front_porch -> key: "front_porch", friendly: "Front Porch"
@@ -930,7 +851,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with detailed AI vision analysis + facial recognition. Returns full scene description and identifies people. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me the [location]', 'who's at the [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
+                    "description": "Check a camera with AI vision analysis. Returns scene description and activity detection. Use for: 'check the [location] camera', 'what's happening in [location]', 'show me the [location]', 'is anyone at [location]'. Works with any camera location: garage, kitchen, nursery, driveway, porch, backyard, living room, etc.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -3274,22 +3195,13 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
 
                 # Build response with full details
-                identified = result.get("identified_people", [])
                 analysis = result.get("description", "Unable to analyze camera feed")
-                person_detected = result.get("person_detected", False)
 
-                response = {
+                return {
                     "location": friendly_name,
                     "status": "checked",
-                    "person_detected": person_detected or bool(identified),
                     "description": analysis
                 }
-
-                if identified:
-                    people_str = ", ".join([f"{p['name']} ({p['confidence']}%)" for p in identified])
-                    response["identified"] = people_str
-
-                return response
 
             except Exception as err:
                 _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
@@ -3322,34 +3234,15 @@ class LMStudioConversationEntity(ConversationEntity):
                 if not result or not result.get("success"):
                     return {"location": friendly_name, "error": "Camera unavailable"}
 
-                identified = result.get("identified_people", [])
-                person_detected = result.get("person_detected", False) or bool(identified)
                 analysis = result.get("description", "")
 
                 # Extract just first sentence for quick response
                 brief = analysis.split('.')[0] + '.' if analysis else "No activity."
 
-                if identified:
-                    names = ", ".join([p['name'] for p in identified])
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": True,
-                        "who": names,
-                        "brief": brief
-                    }
-                elif person_detected:
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": True,
-                        "who": "Unknown person",
-                        "brief": brief
-                    }
-                else:
-                    return {
-                        "location": friendly_name,
-                        "anyone_there": False,
-                        "brief": brief
-                    }
+                return {
+                    "location": friendly_name,
+                    "brief": brief
+                }
 
             except Exception as err:
                 _LOGGER.error("Error quick-checking camera %s: %s", location, err)
@@ -3725,14 +3618,12 @@ class LMStudioConversationEntity(ConversationEntity):
     async def _check_single_camera(self, camera_key: str, user_query: str = "") -> dict[str, Any]:
         """Check a single camera and return the analysis result.
 
-        This method is used by the facial_recognition service for automation triggers.
-
         Args:
             camera_key: The camera key (e.g., "porch", "driveway")
             user_query: Optional query about what to look for
 
         Returns:
-            Dict with analysis results including identified_people and analysis text
+            Dict with analysis results
         """
         friendly_name = self.camera_friendly_names.get(
             camera_key,
@@ -3758,18 +3649,14 @@ class LMStudioConversationEntity(ConversationEntity):
                     "location": friendly_name,
                     "status": "unavailable",
                     "error": f"Could not access {friendly_name} camera: {error_msg}",
-                    "identified_people": [],
                     "analysis": ""
                 }
 
-            identified = result.get("identified_people", [])
             analysis = result.get("description", "Unable to analyze camera feed")
 
             return {
                 "location": friendly_name,
                 "status": "checked",
-                "person_detected": len(identified) > 0,
-                "identified_people": identified,
                 "analysis": analysis
             }
 
@@ -3779,6 +3666,5 @@ class LMStudioConversationEntity(ConversationEntity):
                 "location": friendly_name,
                 "status": "error",
                 "error": f"Failed to check {friendly_name} camera: {str(err)}",
-                "identified_people": [],
                 "analysis": ""
             }

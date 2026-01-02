@@ -82,8 +82,6 @@ from .const import (
     CONF_THERMOSTAT_MAX_TEMP,
     CONF_THERMOSTAT_TEMP_STEP,
     CONF_THERMOSTAT_USE_CELSIUS,
-    # Event names
-    CONF_FACIAL_RECOGNITION_EVENT,
     # Defaults
     DEFAULT_USE_NATIVE_INTENTS,
     DEFAULT_EXCLUDED_INTENTS,
@@ -124,8 +122,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
-    # Event defaults
-    DEFAULT_FACIAL_RECOGNITION_EVENT,
     ALL_NATIVE_INTENTS,
     # Gaming mode
     CONF_GAMING_MODE_ENTITY,
@@ -586,10 +582,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_THERMOSTAT_USE_CELSIUS in user_input:
                 processed_input[CONF_THERMOSTAT_USE_CELSIUS] = user_input[CONF_THERMOSTAT_USE_CELSIUS]
 
-            # Handle facial recognition event name
-            if CONF_FACIAL_RECOGNITION_EVENT in user_input:
-                processed_input[CONF_FACIAL_RECOGNITION_EVENT] = user_input[CONF_FACIAL_RECOGNITION_EVENT]
-
             # Handle excluded intents
             if CONF_EXCLUDED_INTENTS in user_input:
                 processed_input[CONF_EXCLUDED_INTENTS] = user_input[CONF_EXCLUDED_INTENTS]
@@ -754,14 +746,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                             step=1,
                             unit_of_measurement=temp_unit,
                             mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_FACIAL_RECOGNITION_EVENT,
-                        default=current.get(CONF_FACIAL_RECOGNITION_EVENT, DEFAULT_FACIAL_RECOGNITION_EVENT),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
                         )
                     ),
                 }

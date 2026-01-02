@@ -85,8 +85,7 @@
           "notification_service": "Notification Service (e.g., mobile_app_your_phone)",
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
-          "thermostat_temp_step": "Temperature Adjustment Step",
-          "facial_recognition_event": "Facial Recognition Event Name"
+          "thermostat_temp_step": "Temperature Adjustment Step"
         }
       },
       "api_keys": {
