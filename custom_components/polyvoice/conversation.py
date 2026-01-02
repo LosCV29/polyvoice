@@ -1377,11 +1377,16 @@ class LMStudioConversationEntity(ConversationEntity):
                 "model": self.model,
                 "messages": messages,
                 "temperature": self.temperature,
-                "max_tokens": max_tokens,
                 "top_p": self.top_p,
                 "stream": True,
             }
-            
+
+            # GPT-5 uses max_completion_tokens instead of max_tokens
+            if self.is_gpt5:
+                kwargs["max_completion_tokens"] = max_tokens
+            else:
+                kwargs["max_tokens"] = max_tokens
+
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = "auto"
@@ -1529,9 +1534,23 @@ class LMStudioConversationEntity(ConversationEntity):
             if self.reasoning_effort and self.reasoning_effort != "none":
                 request_data["reasoning"] = {"effort": self.reasoning_effort}
 
-            # Add tools if available
+            # Add tools if available - convert from Chat Completions format to Responses API format
             if tools:
-                request_data["tools"] = tools
+                # Responses API expects: {"type": "function", "name": "...", "description": "...", "parameters": {...}}
+                # Chat Completions format: {"type": "function", "function": {"name": "...", ...}}
+                converted_tools = []
+                for tool in tools:
+                    if tool.get("type") == "function" and "function" in tool:
+                        func = tool["function"]
+                        converted_tools.append({
+                            "type": "function",
+                            "name": func.get("name"),
+                            "description": func.get("description", ""),
+                            "parameters": func.get("parameters", {}),
+                        })
+                    else:
+                        converted_tools.append(tool)
+                request_data["tools"] = converted_tools
 
             self._track_api_call("llm")
 
