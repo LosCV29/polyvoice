@@ -937,7 +937,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "quick_camera_check",
-                    "description": "FAST presence check. Use for: 'is anyone in [location]', 'is someone at [location]?'. Returns a 'response' field - relay it to the user exactly as provided.",
+                    "description": "FAST presence check. Use for: 'is anyone in [location]?'. IMPORTANT: The 'response' field contains a complete answer with scene description. You MUST relay it VERBATIM to the user - do not summarize or shorten it.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -3438,19 +3438,19 @@ class LMStudioConversationEntity(ConversationEntity):
                 else:
                     person_detected = False  # Default to no if unclear
 
-                _LOGGER.info("Quick camera check - %s: identified=%s, text_no=%s, text_yes=%s, result=%s",
-                           friendly_name, bool(identified), text_says_no_people, text_mentions_people, person_detected)
+                _LOGGER.info("Quick camera check - %s: identified=%s, text_no=%s, text_yes=%s, result=%s, brief=%s",
+                           friendly_name, bool(identified), text_says_no_people, text_mentions_people, person_detected, brief)
 
-                # Return pre-formatted response
+                # Return pre-formatted response with clear structure
                 if identified:
                     names = ", ".join([p['name'] for p in identified])
-                    full_response = f"Yes, I see {names} on the {friendly_name}. {brief}"
+                    full_response = f"Yes, I see {names} on the {friendly_name}. Currently showing: {brief}"
                 elif person_detected:
-                    full_response = f"Yes, there's someone on the {friendly_name}. {brief}"
+                    full_response = f"Yes, there's someone on the {friendly_name}. Currently showing: {brief}"
                 else:
-                    full_response = f"No, I don't see anyone on the {friendly_name}. {brief}"
+                    full_response = f"No, I don't see anyone on the {friendly_name}. Currently showing: {brief}"
 
-                return {"response": full_response}
+                return {"response": full_response, "relay_verbatim": True}
 
             except Exception as err:
                 _LOGGER.error("Error checking camera %s: %s", location, err, exc_info=True)
