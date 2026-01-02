@@ -3421,40 +3421,30 @@ class LMStudioConversationEntity(ConversationEntity):
                         response["recognized"] = [f"{p['name']} ({p['confidence']}%)" for p in identified]
                     return response
                 else:
-                    # Quick presence check - clear YES/NO
+                    # Quick presence check - clear YES/NO with description
                     # Clean up the summary - remove YES/NO prefix if vision model added it
                     summary = analysis
                     for prefix in ["yes.", "yes,", "yes:", "yes -", "no.", "no,", "no:", "no -"]:
                         if summary.lower().startswith(prefix):
                             summary = summary[len(prefix):].strip()
                             break
-                    # Take first sentence
+                    # Take first sentence for brief description
                     if '.' in summary:
                         summary = summary.split('.')[0] + '.'
 
+                    # Return a single "answer" field - LLM should relay this directly
                     if identified:
                         names = [p['name'] for p in identified]
                         return {
-                            "location": friendly_name,
-                            "anyone_there": "YES",
-                            "who": ", ".join(names),
-                            "what_i_see": summary,
-                            "respond_with": f"Yes, {', '.join(names)} is on the {friendly_name}. {summary}"
+                            "answer": f"Yes, I see {', '.join(names)} in the {friendly_name}. {summary}"
                         }
                     elif person_detected:
                         return {
-                            "location": friendly_name,
-                            "anyone_there": "YES",
-                            "who": "unidentified person",
-                            "what_i_see": summary,
-                            "respond_with": f"Yes, there's someone on the {friendly_name}. {summary}"
+                            "answer": f"Yes, there's someone in the {friendly_name}. {summary}"
                         }
                     else:
                         return {
-                            "location": friendly_name,
-                            "anyone_there": "NO",
-                            "what_i_see": summary,
-                            "respond_with": f"No, I don't see anyone on the {friendly_name}. {summary}"
+                            "answer": f"No, I don't see anyone in the {friendly_name}. {summary}"
                         }
 
             except Exception as err:
