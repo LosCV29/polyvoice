@@ -2050,24 +2050,33 @@ class LMStudioConversationEntity(ConversationEntity):
                 team_found = False
                 url = None
                 full_name = team_name
-                for sport, league in leagues_to_try:
-                    teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=500"
-                    async with self._session.get(teams_url, headers=headers) as teams_resp:
-                        if teams_resp.status == 200:
-                            teams_data = await teams_resp.json()
-                            for team in teams_data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
-                                t = team.get("team", {})
-                                if (team_key in t.get("displayName", "").lower() or
-                                    team_key in t.get("shortDisplayName", "").lower() or
-                                    team_key in t.get("nickname", "").lower() or
-                                    team_key == t.get("abbreviation", "").lower()):
-                                    team_id = t.get("id", "")
-                                    full_name = t.get("displayName", team_name)
-                                    url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
-                                    team_found = True
-                                    break
+
+                # Two-pass search: exact abbreviation match first, then substring match
+                for match_type in ["abbrev", "name"]:
                     if team_found:
                         break
+                    for sport, league in leagues_to_try:
+                        teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=500"
+                        async with self._session.get(teams_url, headers=headers) as teams_resp:
+                            if teams_resp.status == 200:
+                                teams_data = await teams_resp.json()
+                                for team in teams_data.get("sports", [{}])[0].get("leagues", [{}])[0].get("teams", []):
+                                    t = team.get("team", {})
+                                    match = False
+                                    if match_type == "abbrev":
+                                        match = team_key == t.get("abbreviation", "").lower()
+                                    else:
+                                        match = (team_key in t.get("displayName", "").lower() or
+                                                team_key in t.get("shortDisplayName", "").lower() or
+                                                team_key in t.get("nickname", "").lower())
+                                    if match:
+                                        team_id = t.get("id", "")
+                                        full_name = t.get("displayName", team_name)
+                                        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
+                                        team_found = True
+                                        break
+                        if team_found:
+                            break
 
                 if not team_found:
                     return {"error": f"Team '{team_name}' not found. Try the full team name (e.g., 'Miami Heat', 'New York Yankees')"}
