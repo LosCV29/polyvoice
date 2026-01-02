@@ -62,6 +62,7 @@
           "enable_calendar": "Calendar Events",
           "enable_cameras": "Camera Checks (requires HA Video Vision integration)",
           "enable_sports": "Sports Scores & Schedules",
+          "enable_stocks": "Stock Prices",
           "enable_news": "News Headlines",
           "enable_places": "Find Nearby Places (Google Places)",
           "enable_restaurants": "Restaurant Recommendations (Yelp)",

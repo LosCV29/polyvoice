@@ -67,6 +67,7 @@ from .const import (
     CONF_ENABLE_CALENDAR,
     CONF_ENABLE_CAMERAS,
     CONF_ENABLE_SPORTS,
+    CONF_ENABLE_STOCKS,
     CONF_ENABLE_NEWS,
     CONF_ENABLE_PLACES,
     CONF_ENABLE_RESTAURANTS,
@@ -92,6 +93,7 @@ from .const import (
     DEFAULT_ENABLE_CALENDAR,
     DEFAULT_ENABLE_CAMERAS,
     DEFAULT_ENABLE_SPORTS,
+    DEFAULT_ENABLE_STOCKS,
     DEFAULT_ENABLE_NEWS,
     DEFAULT_ENABLE_PLACES,
     DEFAULT_ENABLE_RESTAURANTS,
@@ -530,6 +532,7 @@ class LMStudioConversationEntity(ConversationEntity):
         self.enable_calendar = config.get(CONF_ENABLE_CALENDAR, DEFAULT_ENABLE_CALENDAR)
         self.enable_cameras = config.get(CONF_ENABLE_CAMERAS, DEFAULT_ENABLE_CAMERAS)
         self.enable_sports = config.get(CONF_ENABLE_SPORTS, DEFAULT_ENABLE_SPORTS)
+        self.enable_stocks = config.get(CONF_ENABLE_STOCKS, DEFAULT_ENABLE_STOCKS)
         self.enable_news = config.get(CONF_ENABLE_NEWS, DEFAULT_ENABLE_NEWS)
         self.enable_places = config.get(CONF_ENABLE_PLACES, DEFAULT_ENABLE_PLACES)
         self.enable_restaurants = config.get(CONF_ENABLE_RESTAURANTS, DEFAULT_ENABLE_RESTAURANTS)
@@ -824,21 +827,22 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
 
-        # ===== STOCKS (always enabled - free API) =====
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": "get_stock_price",
-                "description": "Get current stock price and daily change. Use for: 'Apple stock', 'what's Tesla at', 'AAPL price', 'how is NVDA doing'. Works with stock symbols (AAPL, TSLA, GOOGL) or company names.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "symbol": {"type": "string", "description": "Stock symbol (e.g., 'AAPL', 'TSLA', 'GOOGL', 'MSFT', 'NVDA', 'AMZN') or company name (e.g., 'Apple', 'Tesla')"}
-                    },
-                    "required": ["symbol"]
+        # ===== STOCKS (if enabled - free API, no key required) =====
+        if self.enable_stocks:
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "get_stock_price",
+                    "description": "Get current stock price and daily change. Use for: 'Apple stock', 'what's Tesla at', 'AAPL price', 'how is NVDA doing'. Works with stock symbols (AAPL, TSLA, GOOGL) or company names.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Stock symbol (e.g., 'AAPL', 'TSLA', 'GOOGL', 'MSFT', 'NVDA', 'AMZN') or company name (e.g., 'Apple', 'Tesla')"}
+                        },
+                        "required": ["symbol"]
+                    }
                 }
-            }
-        })
+            })
 
         # ===== NEWS (if enabled and API key available) =====
         if self.enable_news and self.newsapi_key:
