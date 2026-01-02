@@ -265,7 +265,7 @@ ALL_NATIVE_INTENTS: Final = [
 CONF_SYSTEM_PROMPT: Final = "system_prompt"
 
 DEFAULT_SYSTEM_PROMPT: Final = """You are a smart home assistant. Be concise (1-2 sentences for voice responses).
-When using tools, respond DIRECTLY with the result. Do NOT say "I'll look this up" or "Let me check" - just give the answer.
+NEVER reveal your internal thinking or reasoning. Do NOT say things like "I need to check", "Let me look this up", "I'll check the latest score", or similar phrases. Just give the answer directly.
 
 [CURRENT_DATE_WILL_BE_INJECTED_HERE]
 

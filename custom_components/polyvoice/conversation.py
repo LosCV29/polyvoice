@@ -2127,11 +2127,14 @@ class LMStudioConversationEntity(ConversationEntity):
                     competitors = comp.get("competitors", [])
                     home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
                     away_team = next((c for c in competitors if c.get("homeAway") == "away"), {})
-                    
+
                     home_name = home_team.get("team", {}).get("displayName", "Home")
                     away_name = away_team.get("team", {}).get("displayName", "Away")
-                    home_score = home_team.get("score", "0")
-                    away_score = away_team.get("score", "0")
+                    # Score can be a dict {'value': 34.0, 'displayValue': '34'} or a string
+                    home_score_raw = home_team.get("score", "0")
+                    away_score_raw = away_team.get("score", "0")
+                    home_score = home_score_raw.get("displayValue", home_score_raw) if isinstance(home_score_raw, dict) else home_score_raw
+                    away_score = away_score_raw.get("displayValue", away_score_raw) if isinstance(away_score_raw, dict) else away_score_raw
                     
                     game_date = last_game.get("date", "")[:10]
                     
@@ -2153,8 +2156,11 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     home_name = home_team.get("team", {}).get("displayName", "Home")
                     away_name = away_team.get("team", {}).get("displayName", "Away")
-                    home_score = home_team.get("score", "0")
-                    away_score = away_team.get("score", "0")
+                    # Score can be a dict {'value': 34.0, 'displayValue': '34'} or a string
+                    home_score_raw = home_team.get("score", "0")
+                    away_score_raw = away_team.get("score", "0")
+                    home_score = home_score_raw.get("displayValue", home_score_raw) if isinstance(home_score_raw, dict) else home_score_raw
+                    away_score = away_score_raw.get("displayValue", away_score_raw) if isinstance(away_score_raw, dict) else away_score_raw
 
                     # Get game clock/period info
                     status_detail = comp.get("status", {}).get("type", {}).get("detail", "In Progress")
