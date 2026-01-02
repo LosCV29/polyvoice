@@ -3406,7 +3406,11 @@ class LMStudioConversationEntity(ConversationEntity):
                 result = await self.hass.services.async_call(
                     "ha_video_vision",
                     "analyze_camera",
-                    {"camera": location, "duration": 2},
+                    {
+                        "camera": location,
+                        "duration": 2,
+                        "user_query": "In ONE sentence, describe what you see (objects, vehicles, lighting, weather). Then state if any people are visible."
+                    },
                     blocking=True,
                     return_response=True,
                 )
