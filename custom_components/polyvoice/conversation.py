@@ -3351,20 +3351,21 @@ class LMStudioConversationEntity(ConversationEntity):
 
             try:
                 # Build service call data with duration based on detail level
-                # Detailed mode gets longer duration for better analysis
                 service_data = {
                     "camera": location,
                     "duration": 5 if detail_level == "detailed" else 2,
                 }
 
-                # For detailed mode, ask for comprehensive analysis
+                # Customize prompt based on mode
                 if detail_level == "detailed":
                     if query:
                         service_data["user_query"] = query
                     else:
-                        service_data["user_query"] = "Provide a comprehensive, detailed description of everything visible in this scene. Describe all people (appearance, clothing, actions, location in frame), vehicles, objects, lighting conditions, weather if visible, and any activity or movement. Be thorough and specific."
-                elif query:
-                    service_data["user_query"] = query
+                        # Describe the scene naturally, confirm people at the end
+                        service_data["user_query"] = "Describe everything visible in detail: all people (appearance, clothing, what they're doing), vehicles, objects, lighting, and any activity. At the end, clearly state how many people are visible (or none)."
+                else:
+                    # Quick mode: explicit YES/NO presence detection
+                    service_data["user_query"] = "Are there any people visible? Answer with YES or NO first, then describe what you see in one sentence."
 
                 # Call ha_video_vision integration service
                 result = await self.hass.services.async_call(
@@ -3384,54 +3385,73 @@ class LMStudioConversationEntity(ConversationEntity):
                     }
 
                 identified = result.get("identified_people", [])
-                analysis = result.get("description", "Unable to analyze camera feed")
-                person_detected = result.get("person_detected", False) or bool(identified)
+                analysis = result.get("description", "Unable to analyze")
+
+                # Parse person detection from actual analysis text (more reliable than flag)
+                analysis_lower = analysis.lower()
+
+                # Check for explicit NO people indicators
+                no_people_phrases = ["no people", "no one", "nobody", "no person", "no humans",
+                                     "no visible people", "aren't any people", "are no people",
+                                     "don't see any", "no individuals", "empty", "unoccupied",
+                                     "no one is", "zero people", "devoid of people"]
+
+                # Determine presence: identified people are ground truth
+                if identified:
+                    person_detected = True
+                elif any(phrase in analysis_lower for phrase in no_people_phrases):
+                    person_detected = False
+                elif analysis_lower.strip().startswith("no"):
+                    # Vision model responded with "No, ..." to our YES/NO question
+                    person_detected = False
+                elif analysis_lower.strip().startswith("yes"):
+                    person_detected = True
+                else:
+                    # Fall back to the flag only if text is inconclusive
+                    person_detected = result.get("person_detected", False)
 
                 if detail_level == "detailed":
-                    # Full detailed response - give the LLM everything
+                    # Full scene description, confirm people at end
                     response = {
                         "location": friendly_name,
-                        "status": "checked",
-                        "person_detected": person_detected,
-                        "full_scene_description": analysis,
-                        "response_instruction": "Provide a thorough description of everything in the scene to the user. Include all details about people, objects, vehicles, and activity."
+                        "scene_description": analysis,
+                        "people_present": "Yes" if person_detected else "No"
                     }
                     if identified:
-                        people_list = [f"{p['name']} (confidence: {p['confidence']}%)" for p in identified]
-                        response["identified_people"] = people_list
-                        response["facial_recognition_note"] = f"Recognized: {', '.join([p['name'] for p in identified])}"
+                        response["recognized"] = [f"{p['name']} ({p['confidence']}%)" for p in identified]
                     return response
                 else:
-                    # Quick presence check - give clear YES/NO data
-                    # Get a concise one-sentence summary
-                    brief = analysis.split('.')[0] + '.' if analysis else "Area appears clear."
+                    # Quick presence check - clear YES/NO
+                    # Clean up the summary - remove YES/NO prefix if vision model added it
+                    summary = analysis
+                    for prefix in ["yes.", "yes,", "yes:", "yes -", "no.", "no,", "no:", "no -"]:
+                        if summary.lower().startswith(prefix):
+                            summary = summary[len(prefix):].strip()
+                            break
+                    # Take first sentence
+                    if '.' in summary:
+                        summary = summary.split('.')[0] + '.'
 
                     if identified:
                         names = [p['name'] for p in identified]
                         return {
                             "location": friendly_name,
-                            "presence_detected": "YES",
-                            "person_identified": True,
+                            "anyone_there": "YES",
                             "who": ", ".join(names),
-                            "one_sentence_summary": brief,
-                            "response_instruction": "Start with 'Yes' and state who is there, then give the one sentence summary."
+                            "description": summary
                         }
                     elif person_detected:
                         return {
                             "location": friendly_name,
-                            "presence_detected": "YES",
-                            "person_identified": False,
-                            "who": "Unknown person (not recognized)",
-                            "one_sentence_summary": brief,
-                            "response_instruction": "Start with 'Yes, there is someone there' (unknown person), then give the one sentence summary."
+                            "anyone_there": "YES",
+                            "who": "unidentified person",
+                            "description": summary
                         }
                     else:
                         return {
                             "location": friendly_name,
-                            "presence_detected": "NO",
-                            "person_identified": False,
-                            "one_sentence_summary": brief,
-                            "response_instruction": "Start with 'No, I don't see anyone' at that location, then give the one sentence summary of what you DO see."
+                            "anyone_there": "NO",
+                            "description": summary
                         }
 
             except Exception as err:
