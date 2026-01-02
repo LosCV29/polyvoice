@@ -123,16 +123,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
     ALL_NATIVE_INTENTS,
-    # Gaming mode
-    CONF_GAMING_MODE_ENTITY,
-    CONF_CLOUD_FALLBACK_PROVIDER,
-    CONF_CLOUD_FALLBACK_MODEL,
-    CONF_CLOUD_FALLBACK_API_KEY,
-    DEFAULT_GAMING_MODE_ENTITY,
-    DEFAULT_CLOUD_FALLBACK_PROVIDER,
-    DEFAULT_CLOUD_FALLBACK_MODEL,
-    DEFAULT_CLOUD_FALLBACK_API_KEY,
-    LOCAL_PROVIDERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -356,7 +346,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "api_keys": "API Keys",
                 "location": "Location Settings",
                 "intents": "Native Intents",
-                "gaming": "Gaming Mode (Cloud Fallback)",
                 "advanced": "Advanced Settings",
             },
         )
@@ -853,60 +842,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ): str,
                 }
             ),
-        )
-
-    async def async_step_gaming(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle gaming mode (cloud fallback) settings."""
-        if user_input is not None:
-            new_options = {**self._entry.options, **user_input}
-            return self.async_create_entry(title="", data=new_options)
-
-        current = {**self._entry.data, **self._entry.options}
-
-        # Build cloud provider options (exclude local providers)
-        cloud_provider_options = [
-            selector.SelectOptionDict(value=p, label=PROVIDER_NAMES[p])
-            for p in ALL_PROVIDERS
-            if p not in LOCAL_PROVIDERS
-        ]
-
-        return self.async_show_form(
-            step_id="gaming",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_GAMING_MODE_ENTITY,
-                        default=current.get(CONF_GAMING_MODE_ENTITY, DEFAULT_GAMING_MODE_ENTITY),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="input_boolean",
-                            multiple=False,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_CLOUD_FALLBACK_PROVIDER,
-                        default=current.get(CONF_CLOUD_FALLBACK_PROVIDER, DEFAULT_CLOUD_FALLBACK_PROVIDER),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=cloud_provider_options,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_CLOUD_FALLBACK_MODEL,
-                        default=current.get(CONF_CLOUD_FALLBACK_MODEL, DEFAULT_CLOUD_FALLBACK_MODEL),
-                    ): str,
-                    vol.Optional(
-                        CONF_CLOUD_FALLBACK_API_KEY,
-                        default=current.get(CONF_CLOUD_FALLBACK_API_KEY, DEFAULT_CLOUD_FALLBACK_API_KEY),
-                    ): str,
-                }
-            ),
-            description_placeholders={
-                "gaming_note": "When gaming mode is ON and your default provider is local (LM Studio/Ollama), PolyVoice will automatically switch to the cloud fallback provider.",
-            },
         )
 
     async def async_step_advanced(

@@ -117,16 +117,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
-    # Gaming mode
-    CONF_GAMING_MODE_ENTITY,
-    CONF_CLOUD_FALLBACK_PROVIDER,
-    CONF_CLOUD_FALLBACK_MODEL,
-    CONF_CLOUD_FALLBACK_API_KEY,
-    DEFAULT_GAMING_MODE_ENTITY,
-    DEFAULT_CLOUD_FALLBACK_PROVIDER,
-    DEFAULT_CLOUD_FALLBACK_MODEL,
-    DEFAULT_CLOUD_FALLBACK_API_KEY,
-    LOCAL_PROVIDERS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -409,22 +399,6 @@ class LMStudioConversationEntity(ConversationEntity):
         else:
             # For Anthropic and Google, we'll use aiohttp directly
             self.client = None
-
-        # Gaming mode configuration (cloud fallback when gaming)
-        self.gaming_mode_entity = config.get(CONF_GAMING_MODE_ENTITY, DEFAULT_GAMING_MODE_ENTITY)
-        self.cloud_fallback_provider = config.get(CONF_CLOUD_FALLBACK_PROVIDER, DEFAULT_CLOUD_FALLBACK_PROVIDER)
-        self.cloud_fallback_model = config.get(CONF_CLOUD_FALLBACK_MODEL, DEFAULT_CLOUD_FALLBACK_MODEL)
-        self.cloud_fallback_api_key = config.get(CONF_CLOUD_FALLBACK_API_KEY, DEFAULT_CLOUD_FALLBACK_API_KEY)
-
-        # Pre-create cloud fallback client if using a local provider
-        if self.provider in LOCAL_PROVIDERS and self.cloud_fallback_api_key:
-            cloud_base_url = PROVIDER_BASE_URLS.get(self.cloud_fallback_provider, "https://openrouter.ai/api/v1")
-            self.cloud_fallback_client = AsyncOpenAI(
-                base_url=cloud_base_url,
-                api_key=self.cloud_fallback_api_key,
-            )
-        else:
-            self.cloud_fallback_client = None
 
         self.use_native_intents = config.get(CONF_USE_NATIVE_INTENTS, True)
         
@@ -1053,44 +1027,6 @@ class LMStudioConversationEntity(ConversationEntity):
         
         return None
 
-    def _is_gaming_mode_on(self) -> bool:
-        """Check if gaming mode is enabled via the configured input_boolean."""
-        if not self.gaming_mode_entity:
-            return False
-        try:
-            state = self.hass.states.get(self.gaming_mode_entity)
-            if state and state.state == "on":
-                _LOGGER.debug("Gaming mode is ON - will use cloud fallback")
-                return True
-        except Exception as e:
-            _LOGGER.warning("Error checking gaming mode entity: %s", e)
-        return False
-
-    def _get_effective_client_and_model(self) -> tuple:
-        """Get the effective client and model based on gaming mode status.
-
-        Returns:
-            tuple: (client, model, provider) - the client, model, and provider to use
-        """
-        # Only switch to cloud if:
-        # 1. Gaming mode is on
-        # 2. Default provider is local (LM Studio or Ollama)
-        # 3. We have a cloud fallback client configured
-        if (
-            self.provider in LOCAL_PROVIDERS
-            and self._is_gaming_mode_on()
-            and self.cloud_fallback_client
-        ):
-            _LOGGER.info(
-                "Gaming mode active: switching from %s to %s (model: %s)",
-                self.provider,
-                self.cloud_fallback_provider,
-                self.cloud_fallback_model,
-            )
-            return (self.cloud_fallback_client, self.cloud_fallback_model, self.cloud_fallback_provider)
-
-        return (self.client, self.model, self.provider)
-
     async def _call_llm_streaming(
         self,
         conversation_id: str,
@@ -1099,13 +1035,10 @@ class LMStudioConversationEntity(ConversationEntity):
         max_tokens: int,
     ) -> str:
         """Call LLM with streaming and tool support."""
-        # Check for gaming mode and get effective provider
-        effective_client, effective_model, effective_provider = self._get_effective_client_and_model()
-
         # Route to appropriate provider
-        if effective_provider == PROVIDER_ANTHROPIC:
+        if self.provider == PROVIDER_ANTHROPIC:
             return await self._call_anthropic(tools, user_input, max_tokens)
-        elif effective_provider == PROVIDER_GOOGLE:
+        elif self.provider == PROVIDER_GOOGLE:
             return await self._call_google(tools, user_input, max_tokens)
         else:
             # OpenAI-compatible providers (LM Studio, OpenAI, Groq, OpenRouter, Azure, Ollama)
@@ -1336,9 +1269,6 @@ class LMStudioConversationEntity(ConversationEntity):
         max_tokens: int,
     ) -> str:
         """Call OpenAI-compatible API (LM Studio, OpenAI, Groq, OpenRouter, Azure, Ollama)."""
-        # Get effective client and model (handles gaming mode switching)
-        effective_client, effective_model, effective_provider = self._get_effective_client_and_model()
-
         messages = []
 
         if self.system_prompt:
@@ -1352,20 +1282,20 @@ class LMStudioConversationEntity(ConversationEntity):
                 "role": "system",
                 "content": system_prompt_with_date
             })
-        
+
         # Add user message directly (STATELESS - no history)
         messages.append({
             "role": "user",
             "content": user_input.text,
         })
-        
+
         max_iterations = 5
         full_response = ""
         called_tools = set()  # Track tool calls to prevent duplicates
-        
+
         for iteration in range(max_iterations):
             kwargs = {
-                "model": effective_model,
+                "model": self.model,
                 "messages": messages,
                 "temperature": self.temperature,
                 "max_tokens": max_tokens,
@@ -1382,23 +1312,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
             self._track_api_call("llm")
 
-            # Check if we're using cloud fallback (gaming mode active with local provider)
-            is_cloud_fallback = (
-                self.provider in LOCAL_PROVIDERS
-                and self._is_gaming_mode_on()
-                and self.cloud_fallback_client is not None
-            )
-
-            try:
-                stream = await effective_client.chat.completions.create(**kwargs)
-            except OpenAIAuthenticationError as auth_err:
-                if is_cloud_fallback:
-                    raise OpenAIAuthenticationError(
-                        f"Cloud fallback authentication failed for {self.cloud_fallback_provider}. "
-                        f"Please check your cloud fallback API key in the PolyVoice configuration. "
-                        f"Original error: {auth_err}"
-                    ) from auth_err
-                raise
+            stream = await self.client.chat.completions.create(**kwargs)
             
             async for chunk in stream:
                 if not chunk.choices:
