@@ -27,6 +27,7 @@ from .const import (
     PROVIDER_NAMES,
     PROVIDER_BASE_URLS,
     PROVIDER_DEFAULT_MODELS,
+    PROVIDER_MODELS,
     PROVIDER_LM_STUDIO,
     PROVIDER_OPENAI,
     PROVIDER_ANTHROPIC,
@@ -236,7 +237,20 @@ class LMStudioAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             schema_dict[vol.Required(CONF_API_KEY, default="")] = str
 
-        schema_dict[vol.Required(CONF_MODEL, default=default_model)] = str
+        # Build model options for the current provider
+        provider_models = PROVIDER_MODELS.get(provider, [default_model])
+        model_options = [
+            selector.SelectOptionDict(value=m, label=m)
+            for m in provider_models
+        ]
+
+        schema_dict[vol.Required(CONF_MODEL, default=default_model)] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=model_options,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+                custom_value=True,
+            )
+        )
 
         return self.async_show_form(
             step_id="credentials",
@@ -411,6 +425,20 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=new_options)
 
         current = {**self._entry.data, **self._entry.options}
+        current_provider = current.get(CONF_PROVIDER, DEFAULT_PROVIDER)
+        current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
+
+        # Build model options for the current provider
+        provider_models = PROVIDER_MODELS.get(current_provider, [DEFAULT_MODEL])
+
+        # Ensure current model is in the list (for custom models)
+        if current_model and current_model not in provider_models:
+            provider_models = [current_model] + list(provider_models)
+
+        model_options = [
+            selector.SelectOptionDict(value=m, label=m)
+            for m in provider_models
+        ]
 
         return self.async_show_form(
             step_id="model",
@@ -418,8 +446,14 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         CONF_MODEL,
-                        default=current.get(CONF_MODEL, DEFAULT_MODEL),
-                    ): str,
+                        default=current_model,
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=model_options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                            custom_value=True,
+                        )
+                    ),
                     vol.Optional(
                         CONF_TEMPERATURE,
                         default=current.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
