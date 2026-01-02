@@ -19,7 +19,12 @@
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to the API. Check your URL and API key."
+      "cannot_connect": "Cannot connect to the API. Check your URL and API key.",
+      "invalid_api_key": "Invalid API key. Please check your API key and try again.",
+      "api_key_forbidden": "API key access denied. Your key may not have the required permissions.",
+      "server_unreachable": "Server is unreachable. Check the URL or ensure the server is running.",
+      "connection_timeout": "Connection timed out. The server may be slow or unreachable.",
+      "missing_url": "Base URL is required for this provider."
     }
   },
   "options": {

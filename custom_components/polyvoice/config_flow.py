@@ -1,6 +1,7 @@
 """Config flow for PolyVoice integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -8,7 +9,7 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import callback
+from homeassistant.core import callback, HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
@@ -27,6 +28,7 @@ from .const import (
     PROVIDER_NAMES,
     PROVIDER_BASE_URLS,
     PROVIDER_DEFAULT_MODELS,
+    PROVIDER_MODELS,
     PROVIDER_LM_STUDIO,
     PROVIDER_OPENAI,
     PROVIDER_ANTHROPIC,
@@ -131,6 +133,133 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+async def fetch_available_models(
+    provider: str, base_url: str, api_key: str, timeout: int = 10
+) -> tuple[list[str], str | None]:
+    """Fetch available models from provider API.
+
+    Returns tuple of (model_list, error_message).
+    error_message is None on success, or contains specific error on failure.
+    """
+    models: list[str] = []
+    error: str | None = None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            if provider == PROVIDER_ANTHROPIC:
+                headers = {
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                }
+                async with session.get(
+                    f"{base_url}/v1/models",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                ) as response:
+                    if response.status == 401:
+                        error = "invalid_api_key"
+                    elif response.status == 403:
+                        error = "api_key_forbidden"
+                    elif response.status == 200:
+                        data = await response.json()
+                        models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                    else:
+                        error = "cannot_connect"
+
+            elif provider == PROVIDER_GOOGLE:
+                async with session.get(
+                    f"{base_url}/models?key={api_key}",
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                ) as response:
+                    if response.status == 400:
+                        error = "invalid_api_key"
+                    elif response.status == 403:
+                        error = "api_key_forbidden"
+                    elif response.status == 200:
+                        data = await response.json()
+                        # Google returns models with "models/" prefix
+                        for m in data.get("models", []):
+                            name = m.get("name", "")
+                            if name.startswith("models/"):
+                                name = name[7:]  # Remove "models/" prefix
+                            if name and "generateContent" in str(m.get("supportedGenerationMethods", [])):
+                                models.append(name)
+                    else:
+                        error = "cannot_connect"
+
+            elif provider == PROVIDER_AZURE:
+                if not base_url:
+                    error = "missing_url"
+                else:
+                    headers = {"api-key": api_key} if api_key else {}
+                    # Azure: extract resource URL for model listing
+                    if "/openai/deployments/" in base_url:
+                        resource_url = base_url.split("/openai/deployments/")[0]
+                        test_url = f"{resource_url}/openai/deployments?api-version=2024-02-01"
+                    else:
+                        test_url = f"{base_url}/openai/deployments?api-version=2024-02-01"
+                    async with session.get(
+                        test_url,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=timeout),
+                    ) as response:
+                        if response.status == 401:
+                            error = "invalid_api_key"
+                        elif response.status == 403:
+                            error = "api_key_forbidden"
+                        elif response.status == 200:
+                            data = await response.json()
+                            models = [d.get("id") for d in data.get("data", []) if d.get("id")]
+                        else:
+                            # Azure deployment names may not be listable
+                            pass
+
+            elif provider == PROVIDER_OLLAMA:
+                # Ollama uses /api/tags for model listing (not /v1/models)
+                ollama_base = base_url.replace("/v1", "") if base_url.endswith("/v1") else base_url
+                async with session.get(
+                    f"{ollama_base}/api/tags",
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+                    else:
+                        error = "server_unreachable"
+
+            else:
+                # OpenAI-compatible (LM Studio, OpenAI, Groq, OpenRouter)
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                async with session.get(
+                    f"{base_url}/models",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                ) as response:
+                    if response.status == 401:
+                        error = "invalid_api_key"
+                    elif response.status == 403:
+                        error = "api_key_forbidden"
+                    elif response.status == 200:
+                        data = await response.json()
+                        models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                    else:
+                        error = "cannot_connect"
+
+    except asyncio.TimeoutError:
+        error = "connection_timeout"
+    except aiohttp.ClientConnectorError:
+        error = "server_unreachable"
+    except Exception as e:
+        _LOGGER.warning("Model fetch exception for %s: %s", provider, e)
+        # For local providers, server might not be running yet
+        if provider in [PROVIDER_LM_STUDIO, PROVIDER_OLLAMA]:
+            pass  # Allow empty list, user can type custom model
+        else:
+            error = "cannot_connect"
+
+    return (models, error)
+
+
 class LMStudioAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for PolyVoice."""
 
@@ -174,27 +303,34 @@ class LMStudioAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle credentials step."""
         errors = {}
         provider = self._data.get(CONF_PROVIDER, DEFAULT_PROVIDER)
-        
+
         if user_input is not None:
             self._data.update(user_input)
-            
+
             # Set base URL based on provider if not custom
             if not user_input.get(CONF_BASE_URL):
                 self._data[CONF_BASE_URL] = PROVIDER_BASE_URLS.get(provider, DEFAULT_BASE_URL)
-            
-            # Validate connection
-            try:
-                valid = await self._test_connection(
-                    provider,
-                    self._data.get(CONF_BASE_URL, PROVIDER_BASE_URLS.get(provider)),
-                    self._data.get(CONF_API_KEY, ""),
-                )
-                if not valid:
+
+            # Validate connection and fetch models
+            base_url = self._data.get(CONF_BASE_URL, PROVIDER_BASE_URLS.get(provider))
+            api_key = self._data.get(CONF_API_KEY, "")
+
+            models, error = await fetch_available_models(provider, base_url, api_key)
+
+            if error:
+                # Map errors to appropriate field
+                if error in ["invalid_api_key", "api_key_forbidden"]:
+                    errors["api_key"] = error
+                elif error == "missing_url":
+                    errors["base_url"] = "missing_url"
+                elif error in ["server_unreachable", "connection_timeout"]:
+                    errors["base"] = error
+                else:
                     errors["base"] = "cannot_connect"
-            except Exception as e:
-                _LOGGER.error("Connection test failed: %s", e)
+            elif not models and provider not in [PROVIDER_LM_STUDIO, PROVIDER_OLLAMA, PROVIDER_AZURE]:
+                # Require models for cloud providers
                 errors["base"] = "cannot_connect"
-            
+
             if not errors:
                 return self.async_create_entry(
                     title=f"PolyVoice ({PROVIDER_NAMES[provider]})",
@@ -226,7 +362,30 @@ class LMStudioAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             schema_dict[vol.Required(CONF_API_KEY, default="")] = str
 
-        schema_dict[vol.Required(CONF_MODEL, default=default_model)] = str
+        # Try to fetch available models for dropdown
+        available_models: list[str] = []
+        if user_input:
+            # If we have credentials, try to fetch models
+            base_url = user_input.get(CONF_BASE_URL) or default_url
+            api_key = user_input.get(CONF_API_KEY, "")
+            available_models, _ = await fetch_available_models(provider, base_url, api_key)
+
+        if available_models:
+            # Use dropdown with available models
+            model_options = [
+                selector.SelectOptionDict(value=m, label=m)
+                for m in sorted(available_models)
+            ]
+            schema_dict[vol.Required(CONF_MODEL, default=default_model)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=model_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    custom_value=True,  # Allow typing custom model name
+                )
+            )
+        else:
+            # Fallback to text field with suggested models
+            schema_dict[vol.Required(CONF_MODEL, default=default_model)] = str
 
         return self.async_show_form(
             step_id="credentials",
@@ -400,29 +559,54 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=new_options)
 
         current = {**self._entry.data, **self._entry.options}
+        provider = current.get(CONF_PROVIDER, DEFAULT_PROVIDER)
+        base_url = current.get(CONF_BASE_URL, PROVIDER_BASE_URLS.get(provider, DEFAULT_BASE_URL))
+        api_key = current.get(CONF_API_KEY, "")
+        current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
+
+        # Fetch available models from provider
+        available_models, _ = await fetch_available_models(provider, base_url, api_key)
+
+        schema_dict = {}
+
+        if available_models:
+            # Use dropdown with available models
+            model_options = [
+                selector.SelectOptionDict(value=m, label=m)
+                for m in sorted(available_models)
+            ]
+            # Add current model if not in list (user may have manually entered it)
+            if current_model and current_model not in available_models:
+                model_options.insert(0, selector.SelectOptionDict(value=current_model, label=f"{current_model} (current)"))
+
+            schema_dict[vol.Required(CONF_MODEL, default=current_model)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=model_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    custom_value=True,  # Allow typing custom model name
+                )
+            )
+        else:
+            # Fallback to text field
+            schema_dict[vol.Required(CONF_MODEL, default=current_model)] = str
+
+        # Add remaining model settings
+        schema_dict[vol.Optional(
+            CONF_TEMPERATURE,
+            default=current.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
+        )] = vol.All(vol.Coerce(float), vol.Range(min=0.0, max=2.0))
+        schema_dict[vol.Optional(
+            CONF_MAX_TOKENS,
+            default=current.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
+        )] = cv.positive_int
+        schema_dict[vol.Optional(
+            CONF_TOP_P,
+            default=current.get(CONF_TOP_P, DEFAULT_TOP_P),
+        )] = vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0))
 
         return self.async_show_form(
             step_id="model",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_MODEL,
-                        default=current.get(CONF_MODEL, DEFAULT_MODEL),
-                    ): str,
-                    vol.Optional(
-                        CONF_TEMPERATURE,
-                        default=current.get(CONF_TEMPERATURE, DEFAULT_TEMPERATURE),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=2.0)),
-                    vol.Optional(
-                        CONF_MAX_TOKENS,
-                        default=current.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS),
-                    ): cv.positive_int,
-                    vol.Optional(
-                        CONF_TOP_P,
-                        default=current.get(CONF_TOP_P, DEFAULT_TOP_P),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                }
-            ),
+            data_schema=vol.Schema(schema_dict),
         )
 
     async def async_step_features(
