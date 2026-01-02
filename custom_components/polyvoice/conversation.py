@@ -3438,20 +3438,23 @@ class LMStudioConversationEntity(ConversationEntity):
                             "location": friendly_name,
                             "anyone_there": "YES",
                             "who": ", ".join(names),
-                            "description": summary
+                            "what_i_see": summary,
+                            "respond_with": f"Yes, {', '.join(names)} is on the {friendly_name}. {summary}"
                         }
                     elif person_detected:
                         return {
                             "location": friendly_name,
                             "anyone_there": "YES",
                             "who": "unidentified person",
-                            "description": summary
+                            "what_i_see": summary,
+                            "respond_with": f"Yes, there's someone on the {friendly_name}. {summary}"
                         }
                     else:
                         return {
                             "location": friendly_name,
                             "anyone_there": "NO",
-                            "description": summary
+                            "what_i_see": summary,
+                            "respond_with": f"No, I don't see anyone on the {friendly_name}. {summary}"
                         }
 
             except Exception as err:
