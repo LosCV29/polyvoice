@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 import aiohttp
 import voluptuous as vol
-from openai import AsyncOpenAI, AsyncAzureOpenAI
+from openai import AsyncOpenAI, AsyncAzureOpenAI, AuthenticationError as OpenAIAuthenticationError
 
 from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntity
@@ -1460,7 +1460,24 @@ class LMStudioConversationEntity(ConversationEntity):
             tool_calls_buffer = []
 
             self._track_api_call("llm")
-            stream = await effective_client.chat.completions.create(**kwargs)
+
+            # Check if we're using cloud fallback (gaming mode active with local provider)
+            is_cloud_fallback = (
+                self.provider in LOCAL_PROVIDERS
+                and self._is_gaming_mode_on()
+                and self.cloud_fallback_client is not None
+            )
+
+            try:
+                stream = await effective_client.chat.completions.create(**kwargs)
+            except OpenAIAuthenticationError as auth_err:
+                if is_cloud_fallback:
+                    raise OpenAIAuthenticationError(
+                        f"Cloud fallback authentication failed for {self.cloud_fallback_provider}. "
+                        f"Please check your cloud fallback API key in the PolyVoice configuration. "
+                        f"Original error: {auth_err}"
+                    ) from auth_err
+                raise
             
             async for chunk in stream:
                 if not chunk.choices:
