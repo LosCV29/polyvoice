@@ -2292,7 +2292,6 @@ class LMStudioConversationEntity(ConversationEntity):
                     # Format date nicely
                     if event_info["date"] and event_info["date"] != "TBD":
                         try:
-                            from datetime import datetime
                             event_dt = datetime.fromisoformat(event_info["date"])
                             event_info["formatted_date"] = event_dt.strftime("%B %d, %Y")
                         except:
