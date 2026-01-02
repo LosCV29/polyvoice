@@ -14,7 +14,7 @@
         "data": {
           "base_url": "API Base URL",
           "api_key": "API Key",
-          "model": "Model Name (or Azure deployment name)"
+          "model": "Model (select or type custom)"
         }
       }
     },
@@ -47,8 +47,9 @@
       },
       "model": {
         "title": "Model Settings",
+        "description": "Select from common models or type a custom model name",
         "data": {
-          "model": "Model Name",
+          "model": "Model",
           "temperature": "Temperature (0.0 - 2.0)",
           "max_tokens": "Max Tokens",
           "top_p": "Top P (0.0 - 1.0)"
