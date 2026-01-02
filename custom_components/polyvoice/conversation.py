@@ -915,7 +915,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "check_camera",
-                    "description": "Check a camera with AI vision analysis. IMPORTANT RESPONSE FORMAT: For 'quick' results, respond with direct YES/NO confirmation first, then the brief description. For 'detailed' results, provide a thorough description of EVERYTHING visible. Use detail_level='quick' for presence questions ('is anyone outside?', 'is someone at the door?'). Use detail_level='detailed' for scene requests ('check the backyard camera', 'what's happening in the garage', 'show me the porch').",
+                    "description": "Check a camera with AI vision analysis. RESPONSE FORMAT: For 'quick' presence checks, ALWAYS respond with: 1) Yes/No answer, 2) One sentence describing what you actually see (to confirm you checked). Example: 'No, I don't see anyone on the porch. I can see the porch furniture and a potted plant.' For 'detailed' mode, provide full scene description. Use 'quick' for presence questions, 'detailed' for 'check camera' requests.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -926,7 +926,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             "detail_level": {
                                 "type": "string",
                                 "enum": ["quick", "detailed"],
-                                "description": "REQUIRED. Use 'quick' ONLY for yes/no presence questions like 'is anyone there?'. Use 'detailed' for ANY request to 'check' a camera or describe what's happening - this provides comprehensive scene analysis."
+                                "description": "Use 'quick' for yes/no presence questions ('is anyone there?'). Use 'detailed' for 'check camera' or scene description requests."
                             },
                             "query": {
                                 "type": "string",
