@@ -65,7 +65,7 @@ PROVIDER_DEFAULT_MODELS: Final = {
     PROVIDER_ANTHROPIC: "claude-sonnet-4-20250514",
     PROVIDER_GOOGLE: "gemini-1.5-flash",
     PROVIDER_GROQ: "llama-3.3-70b-versatile",
-    PROVIDER_OPENROUTER: "openai/gpt-4o-mini",
+    PROVIDER_OPENROUTER: "nvidia/nemotron-nano-12b-v2-vl:free",
     PROVIDER_AZURE: "gpt-4o-mini",  # Deployment name configured in Azure
     PROVIDER_OLLAMA: "llama3.2",
 }
@@ -77,7 +77,16 @@ PROVIDER_MODELS: Final = {
     PROVIDER_ANTHROPIC: ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"],
     PROVIDER_GOOGLE: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"],
     PROVIDER_GROQ: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-    PROVIDER_OPENROUTER: ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5"],
+    PROVIDER_OPENROUTER: [
+        "nvidia/nemotron-nano-12b-v2-vl:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "google/gemma-2-9b-it:free",
+        "qwen/qwen-2.5-72b-instruct:free",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-sonnet",
+        "google/gemini-flash-1.5",
+        "meta-llama/llama-3.1-70b-instruct",
+    ],
     PROVIDER_AZURE: ["gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-35-turbo"],
     PROVIDER_OLLAMA: ["llama3.2", "llama3.1", "mistral", "codellama", "phi3"],
 }
