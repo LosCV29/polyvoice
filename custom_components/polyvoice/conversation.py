@@ -2051,7 +2051,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 url = None
                 full_name = team_name
                 for sport, league in leagues_to_try:
-                    teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams"
+                    teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=500"
                     async with self._session.get(teams_url, headers=headers) as teams_resp:
                         if teams_resp.status == 200:
                             teams_data = await teams_resp.json()
