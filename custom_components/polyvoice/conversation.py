@@ -2244,10 +2244,13 @@ class LMStudioConversationEntity(ConversationEntity):
 
                         # Don't filter by date - scoreboard without date returns upcoming games too
                         scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sb_sport}/{sb_league}/scoreboard"
+                        _LOGGER.debug("Checking scoreboard: %s", scoreboard_url)
                         async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
                             if sb_resp.status != 200:
+                                _LOGGER.debug("Scoreboard %s returned status %s", sb_league, sb_resp.status)
                                 continue
                             sb_data = await sb_resp.json()
+                            _LOGGER.debug("Scoreboard %s has %d events", sb_league, len(sb_data.get("events", [])))
                             for sb_event in sb_data.get("events", []):
                                 sb_comp = sb_event.get("competitions", [{}])[0]
                                 sb_status = sb_comp.get("status", {}).get("type", {})
@@ -2259,6 +2262,8 @@ class LMStudioConversationEntity(ConversationEntity):
                                 # Check if our team is in this game
                                 if team_id not in sb_team_ids:
                                     continue
+
+                                _LOGGER.debug("Found team %s in %s game, state=%s, teams=%s", team_id, sb_league, sb_state, sb_team_ids)
 
                                 home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
                                 away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
