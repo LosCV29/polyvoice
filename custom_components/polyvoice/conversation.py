@@ -2223,8 +2223,9 @@ class LMStudioConversationEntity(ConversationEntity):
 
                 result = {"team": full_name}
 
-                # Check scoreboard FIRST for live games (schedule endpoint often has stale data)
+                # Check scoreboard FIRST for live AND upcoming games (schedule endpoint often has stale data)
                 live_game_from_scoreboard = None
+                next_game_from_scoreboard = None
                 try:
                     today = datetime.now().strftime("%Y%m%d")
                     scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={today}"
@@ -2234,23 +2235,23 @@ class LMStudioConversationEntity(ConversationEntity):
                             for sb_event in sb_data.get("events", []):
                                 sb_comp = sb_event.get("competitions", [{}])[0]
                                 sb_status = sb_comp.get("status", {}).get("type", {})
-
-                                # Only look for in-progress games
-                                if sb_status.get("state") != "in":
-                                    continue
+                                sb_state = sb_status.get("state", "")
 
                                 sb_competitors = sb_comp.get("competitors", [])
                                 sb_team_ids = [c.get("team", {}).get("id", "") for c in sb_competitors]
 
                                 # Check if our team is in this game
-                                if team_id in sb_team_ids:
-                                    home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
-                                    away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
+                                if team_id not in sb_team_ids:
+                                    continue
 
-                                    home_name = home_team_sb.get("team", {}).get("displayName", "Home")
-                                    away_name = away_team_sb.get("team", {}).get("displayName", "Away")
+                                home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
+                                away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
 
-                                    # Scoreboard scores are strings
+                                home_name = home_team_sb.get("team", {}).get("displayName", "Home")
+                                away_name = away_team_sb.get("team", {}).get("displayName", "Away")
+
+                                if sb_state == "in":
+                                    # Live game
                                     home_score = home_team_sb.get("score", "0")
                                     away_score = away_team_sb.get("score", "0")
                                     if isinstance(home_score, dict):
@@ -2269,7 +2270,43 @@ class LMStudioConversationEntity(ConversationEntity):
                                         "summary": f"LIVE: {away_name} {away_score} @ {home_name} {home_score} ({status_detail})"
                                     }
                                     live_game_from_scoreboard = True
-                                    break
+
+                                elif sb_state == "pre" and not next_game_from_scoreboard:
+                                    # Upcoming game - format the date nicely
+                                    game_date_str = sb_event.get("date", "")
+                                    if game_date_str:
+                                        try:
+                                            game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
+                                            game_dt_local = game_dt.astimezone(dt_util.get_time_zone(self.hass.config.time_zone))
+                                            now_local = datetime.now(dt_util.get_time_zone(self.hass.config.time_zone))
+
+                                            game_date_only = game_dt_local.date()
+                                            today_date = now_local.date()
+                                            tomorrow_date = today_date + timedelta(days=1)
+
+                                            time_str = game_dt_local.strftime("%I:%M %p").lstrip("0")
+                                            if game_date_only == today_date:
+                                                formatted_date = f"Today at {time_str}"
+                                            elif game_date_only == tomorrow_date:
+                                                formatted_date = f"Tomorrow at {time_str}"
+                                            else:
+                                                formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
+                                        except (ValueError, KeyError, TypeError, AttributeError):
+                                            formatted_date = sb_status.get("detail", "TBD")
+                                    else:
+                                        formatted_date = sb_status.get("detail", "TBD")
+
+                                    venue = sb_comp.get("venue", {}).get("fullName", "")
+
+                                    result["next_game"] = {
+                                        "date": formatted_date,
+                                        "home_team": home_name,
+                                        "away_team": away_name,
+                                        "venue": venue,
+                                        "summary": f"{away_name} @ {home_name} - {formatted_date}"
+                                    }
+                                    next_game_from_scoreboard = True
+
                 except Exception as e:
                     _LOGGER.warning("Failed to check scoreboard for live games: %s", e)
 
@@ -2280,7 +2317,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
                 events = data.get("events", [])
 
-                if not events and not live_game_from_scoreboard:
+                if not events and not live_game_from_scoreboard and not next_game_from_scoreboard:
                     return {"error": f"No scheduled games found for {full_name}"}
 
                 # Find last completed game, live game, and next upcoming game
@@ -2403,8 +2440,8 @@ class LMStudioConversationEntity(ConversationEntity):
                         "summary": f"LIVE: {away_name} {away_score} @ {home_name} {home_score} ({status_detail})"
                     }
 
-                # Format next game
-                if query_type in ["next_game", "both"] and next_game:
+                # Format next game (skip if already got from scoreboard)
+                if query_type in ["next_game", "both"] and next_game and not next_game_from_scoreboard:
                     comp = next_game.get("competitions", [{}])[0]
                     competitors = comp.get("competitors", [])
                     home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
