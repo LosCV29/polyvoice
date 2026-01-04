@@ -188,7 +188,7 @@ async def fetch_provider_models(
                 # OpenAI-compatible returns {"data": [...]} with "id" field
                 if provider == PROVIDER_GOOGLE:
                     models = data.get("models", [])
-                    _LOGGER.debug("Google returned %d models", len(models))
+                    _LOGGER.warning("Google API returned %d total models", len(models))
                     model_ids = []
                     for model in models:
                         # Google format: "models/gemini-1.5-pro" -> "gemini-1.5-pro"
@@ -198,20 +198,15 @@ async def fetch_provider_models(
 
                         # Extract model ID from full name
                         model_id = name.replace("models/", "")
+
+                        # Include all gemini models (filter out embedding/aqa/imagen)
                         lower_id = model_id.lower()
-
-                        # Skip non-chat models by name pattern
-                        if any(skip in lower_id for skip in [
-                            "embedding", "aqa", "imagen", "bisheng",
-                            "tunedmodels", "code-gecko"
-                        ]):
-                            continue
-
-                        # Only include gemini models (skip legacy palm, etc.)
-                        if not lower_id.startswith("gemini"):
+                        if any(skip in lower_id for skip in ["embedding", "aqa", "imagen"]):
                             continue
 
                         model_ids.append(model_id)
+
+                    _LOGGER.warning("Google filtered to %d gemini models: %s", len(model_ids), model_ids[:10])
                 else:
                     # OpenAI-compatible providers
                     models = data.get("data", [])
