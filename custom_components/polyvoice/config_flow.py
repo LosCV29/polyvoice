@@ -162,7 +162,8 @@ async def fetch_provider_models(
         async with aiohttp.ClientSession() as session:
             # Google Gemini uses different API format
             if provider == PROVIDER_GOOGLE:
-                url = f"{base_url}/models?key={api_key}"
+                # Request max models per page
+                url = f"{base_url}/models?key={api_key}&pageSize=1000"
                 headers = {}
             else:
                 # OpenAI-compatible providers
@@ -187,6 +188,7 @@ async def fetch_provider_models(
                 # OpenAI-compatible returns {"data": [...]} with "id" field
                 if provider == PROVIDER_GOOGLE:
                     models = data.get("models", [])
+                    _LOGGER.debug("Google returned %d models", len(models))
                     model_ids = []
                     for model in models:
                         # Google format: "models/gemini-1.5-pro" -> "gemini-1.5-pro"
@@ -196,15 +198,17 @@ async def fetch_provider_models(
 
                         # Extract model ID from full name
                         model_id = name.replace("models/", "")
+                        lower_id = model_id.lower()
 
-                        # Only include generateContent-capable models (chat models)
-                        supported_methods = model.get("supportedGenerationMethods", [])
-                        if "generateContent" not in supported_methods:
+                        # Skip non-chat models by name pattern
+                        if any(skip in lower_id for skip in [
+                            "embedding", "aqa", "imagen", "bisheng",
+                            "tunedmodels", "code-gecko"
+                        ]):
                             continue
 
-                        # Skip embedding and AQA models
-                        lower_id = model_id.lower()
-                        if any(skip in lower_id for skip in ["embedding", "aqa", "imagen"]):
+                        # Only include gemini models (skip legacy palm, etc.)
+                        if not lower_id.startswith("gemini"):
                             continue
 
                         model_ids.append(model_id)
