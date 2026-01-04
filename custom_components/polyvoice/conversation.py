@@ -2195,7 +2195,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 # Two-pass search: exact abbreviation match first, then word-based match
                 search_words = team_key.split()  # Split "man city" into ["man", "city"]
 
-                _LOGGER.warning("=== SPORTS: Searching for team '%s' (words: %s) ===", team_key, search_words)
+                _LOGGER.debug("Sports: Searching for team '%s' (words: %s)", team_key, search_words)
 
                 for match_type in ["abbrev", "name"]:
                     if team_found:
@@ -2227,13 +2227,13 @@ class LMStudioConversationEntity(ConversationEntity):
                                         full_name = t.get("displayName", team_name)
                                         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
                                         team_leagues.append((sport, league))
-                                        _LOGGER.warning("=== SPORTS: Found team '%s' (id=%s) in %s/%s ===", full_name, team_id, sport, league)
+                                        _LOGGER.debug("Sports: Found team '%s' (id=%s) in %s/%s", full_name, team_id, sport, league)
                                         if not team_found:
                                             team_found = True
                                         break
 
                 if not team_found:
-                    _LOGGER.warning("=== SPORTS: Team '%s' NOT FOUND in any league ===", team_name)
+                    _LOGGER.debug("Sports: Team '%s' not found in any league", team_name)
                     return {"error": f"Team '{team_name}' not found. Try the full team name (e.g., 'Miami Heat', 'New York Yankees')"}
 
                 result = {"team": full_name}
@@ -2254,7 +2254,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             if (found_sport, sl) not in scoreboards_to_check:
                                 scoreboards_to_check.append((found_sport, sl))
 
-                    _LOGGER.warning("=== SPORTS: Checking %d scoreboards for team_id=%s ===", len(scoreboards_to_check), team_id)
+                    _LOGGER.debug("Sports: Checking %d scoreboards for team_id=%s", len(scoreboards_to_check), team_id)
                     for sb_sport, sb_league in scoreboards_to_check:
                         if live_game_from_scoreboard and next_game_from_scoreboard:
                             break  # Already found both
@@ -2263,10 +2263,10 @@ class LMStudioConversationEntity(ConversationEntity):
                         scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sb_sport}/{sb_league}/scoreboard"
                         async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
                             if sb_resp.status != 200:
-                                _LOGGER.warning("=== SPORTS: Scoreboard %s status %s ===", sb_league, sb_resp.status)
+                                _LOGGER.debug("Sports: Scoreboard %s returned status %s", sb_league, sb_resp.status)
                                 continue
                             sb_data = await sb_resp.json()
-                            _LOGGER.warning("=== SPORTS: %s has %d events ===", sb_league, len(sb_data.get("events", [])))
+                            _LOGGER.debug("Sports: %s has %d events", sb_league, len(sb_data.get("events", [])))
                             for sb_event in sb_data.get("events", []):
                                 sb_comp = sb_event.get("competitions", [{}])[0]
                                 sb_status = sb_comp.get("status", {}).get("type", {})
@@ -2279,7 +2279,7 @@ class LMStudioConversationEntity(ConversationEntity):
                                 if team_id not in sb_team_ids:
                                     continue
 
-                                _LOGGER.warning("=== SPORTS: FOUND %s in %s state=%s ===", team_id, sb_league, sb_state)
+                                _LOGGER.debug("Sports: Found team %s in %s, state=%s", team_id, sb_league, sb_state)
 
                                 home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
                                 away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
