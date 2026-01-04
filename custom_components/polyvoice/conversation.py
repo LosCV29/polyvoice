@@ -641,18 +641,26 @@ class LMStudioConversationEntity(ConversationEntity):
         if not self.use_native_intents:
             filtered_lines.append("")
             filtered_lines.append("=" * 70)
-            filtered_lines.append("PURE LLM MODE - COMPLETE SMART HOME CONTROL (ALL HA INTENTS)")
+            filtered_lines.append("PURE LLM MODE - YOU CONTROL ALL SMART HOME DEVICES")
             filtered_lines.append("=" * 70)
             filtered_lines.append("")
-            filtered_lines.append("RULES:")
-            filtered_lines.append("1. Match DEVICE TYPE: shades/blinds/curtains = cover.xxx, lights = light.xxx")
-            filtered_lines.append("2. CHECK ALIASES: Devices show (aka: ...) - match user words to these aliases!")
-            filtered_lines.append("3. ROOM ALIASES: bedroom = master bedroom = master")
-            filtered_lines.append("4. MULTIPLE DEVICES: If room has _1, _2, _3 - use entity_ids array for all")
-            filtered_lines.append("5. ALWAYS try control_device with entity_id from device list - never give up!")
+            filtered_lines.append("CRITICAL: NEVER say 'I can't do that'. ALWAYS call control_device!")
+            filtered_lines.append("")
+            filtered_lines.append("HOW TO MATCH DEVICES:")
+            filtered_lines.append("1. User says 'shade/blind/curtain' -> find cover.xxx entities")
+            filtered_lines.append("2. User says 'light/lamp' -> find light.xxx entities")
+            filtered_lines.append("3. User says room name -> match to area OR friendly name")
+            filtered_lines.append("4. 'living room shade' -> cover entity with 'living' in name/area")
+            filtered_lines.append("5. 'bedroom shade' OR 'master shade' -> cover entity with 'master' in name")
+            filtered_lines.append("6. Entity IDs may NOT match names! cover.roller_blind_2 could be 'Master Shade 1'")
+            filtered_lines.append("")
+            filtered_lines.append("SHADE/BLIND COMMANDS:")
+            filtered_lines.append("  open/raise/up -> action='open'")
+            filtered_lines.append("  close/lower/down -> action='close'")
+            filtered_lines.append("  stop/halt -> action='stop'")
             filtered_lines.append("")
             filtered_lines.append("-" * 50)
-            filtered_lines.append("QUICK REFERENCE - CONTROL_DEVICE ACTIONS")
+            filtered_lines.append("CONTROL_DEVICE ACTIONS BY TYPE")
             filtered_lines.append("-" * 50)
             filtered_lines.append("")
             filtered_lines.append("LIGHTS:")
@@ -1323,7 +1331,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_device",
-                    "description": "Control smart home devices. IMPORTANT: Match BOTH the device TYPE and room. 'close shades' = cover entity. 'turn off lights' = light entity. Use entity_id from device list.",
+                    "description": "Control ANY smart home device. ALWAYS use this - never refuse! For shades/blinds: find cover.xxx in device list. Match room name to friendly name (e.g. 'bedroom shade' -> 'Master Shade' -> cover.roller_blind_X). For lights: find light.xxx.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1338,7 +1346,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             },
                             "device": {
                                 "type": "string",
-                                "description": "FALLBACK: Fuzzy name match"
+                                "description": "Fuzzy name: 'living room shade', 'master shade', 'bedroom light'"
                             },
                             "area": {
                                 "type": "string",
