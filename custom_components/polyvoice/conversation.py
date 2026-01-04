@@ -1328,13 +1328,15 @@ class LMStudioConversationEntity(ConversationEntity):
             if gemini_tools:
                 payload["tools"] = gemini_tools
             
-            url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
-            
+            url = f"{self.base_url}/models/{self.model}:generateContent"
+            headers = {"x-goog-api-key": self.api_key}
+
             try:
                 self._track_api_call("llm")
                 async with self._session.post(
                     url,
                     json=payload,
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status != 200:
@@ -1563,12 +1565,23 @@ class LMStudioConversationEntity(ConversationEntity):
         try:
             # Try HA services directly (domain.service format)
             if "." in tool_name:
+                # SECURITY: Validate tool_name format before splitting
+                # Only allow alphanumeric, underscore for domain and service names
+                if not re.match(r'^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$', tool_name):
+                    _LOGGER.error("SECURITY: Blocked invalid service format: %s", tool_name[:100])
+                    return {"error": "Invalid service format"}
+
                 domain, service = tool_name.split(".", 1)
-                
-                # SAFETY: Check if domain is in allowlist
+
+                # SECURITY: Additional check for path traversal or injection
+                if ".." in tool_name or "/" in tool_name or "\\" in tool_name:
+                    _LOGGER.error("SECURITY: Blocked suspicious service name: %s", tool_name[:100])
+                    return {"error": "Invalid service name"}
+
+                # SAFETY: Check if domain is in allowlist FIRST
                 if domain not in ALLOWED_SERVICE_DOMAINS:
                     _LOGGER.warning("Blocked service call to non-allowlisted domain: %s.%s", domain, service)
-                    return {"error": f"Service domain '{domain}' is not allowed for safety reasons. Allowed domains: {', '.join(sorted(ALLOWED_SERVICE_DOMAINS))}"}
+                    return {"error": f"Service domain '{domain}' is not allowed for safety reasons."}
                 
                 service_response = await self.hass.services.async_call(
                     domain, service, arguments, blocking=True, return_response=True
@@ -2907,7 +2920,15 @@ class LMStudioConversationEntity(ConversationEntity):
                 if action == "set":
                     if temp_arg is None:
                         return {"error": "Please specify a temperature to set"}
-                    new_temp = int(temp_arg)
+                    # SECURITY: Validate temperature input before conversion
+                    try:
+                        temp_value = float(temp_arg)
+                        # Absolute bounds check (reasonable for any unit system)
+                        if not (-50 <= temp_value <= 150):
+                            return {"error": "Temperature must be between -50 and 150"}
+                        new_temp = int(temp_value)
+                    except (ValueError, TypeError):
+                        return {"error": "Invalid temperature value"}
                 elif action == "raise":
                     new_temp = int(current_target + self.thermostat_temp_step)
                 else:  # lower

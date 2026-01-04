@@ -162,9 +162,9 @@ async def fetch_provider_models(
         async with aiohttp.ClientSession() as session:
             # Google Gemini uses different API format
             if provider == PROVIDER_GOOGLE:
-                # Request max models per page
-                url = f"{base_url}/models?key={api_key}&pageSize=1000"
-                headers = {}
+                # Request max models per page - use header auth instead of URL param
+                url = f"{base_url}/models?pageSize=1000"
+                headers = {"x-goog-api-key": api_key}
             else:
                 # OpenAI-compatible providers
                 url = f"{base_url}/models"
