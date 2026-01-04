@@ -2787,10 +2787,17 @@ class LMStudioConversationEntity(ConversationEntity):
                                     home_team = None
                                     away_team = None
                                     for comp in competitors:
+                                        # Score can be a dict {'value': 7.0, 'displayValue': '7'} or a string
+                                        score_raw = comp.get("score", "0")
+                                        if isinstance(score_raw, dict):
+                                            score_val = score_raw.get("displayValue", str(score_raw.get("value", "0")))
+                                        else:
+                                            score_val = str(score_raw) if score_raw else "0"
+
                                         team_info = {
                                             "name": comp.get("team", {}).get("displayName", "Unknown"),
                                             "abbreviation": comp.get("team", {}).get("abbreviation", ""),
-                                            "score": comp.get("score", "0"),
+                                            "score": score_val,
                                             "winner": comp.get("winner", False)
                                         }
                                         if comp.get("homeAway") == "home":
