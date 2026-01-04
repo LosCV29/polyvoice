@@ -2190,12 +2190,19 @@ class LMStudioConversationEntity(ConversationEntity):
                 team_found = False
                 url = None
                 full_name = team_name
+                team_leagues = []  # Track all leagues this team plays in
 
-                # Two-pass search: exact abbreviation match first, then substring match
+                # Two-pass search: exact abbreviation match first, then word-based match
+                search_words = team_key.split()  # Split "man city" into ["man", "city"]
+
+                _LOGGER.debug("Sports: Searching for team '%s' (words: %s)", team_key, search_words)
+
                 for match_type in ["abbrev", "name"]:
                     if team_found:
                         break
                     for sport, league in leagues_to_try:
+                        if team_found:
+                            break
                         teams_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams?limit=500"
                         async with self._session.get(teams_url, headers=headers) as teams_resp:
                             if teams_resp.status == 200:
@@ -2206,51 +2213,82 @@ class LMStudioConversationEntity(ConversationEntity):
                                     if match_type == "abbrev":
                                         match = team_key == t.get("abbreviation", "").lower()
                                     else:
-                                        match = (team_key in t.get("displayName", "").lower() or
-                                                team_key in t.get("shortDisplayName", "").lower() or
-                                                team_key in t.get("nickname", "").lower())
+                                        # Word-based matching: all search words must appear in team name
+                                        display_name = t.get("displayName", "").lower()
+                                        short_name = t.get("shortDisplayName", "").lower()
+                                        nickname = t.get("nickname", "").lower()
+                                        combined = f"{display_name} {short_name} {nickname}"
+
+                                        # Check if ALL search words are in the combined name
+                                        match = all(word in combined for word in search_words)
+
                                     if match:
                                         team_id = t.get("id", "")
                                         full_name = t.get("displayName", team_name)
                                         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
-                                        team_found = True
+                                        team_leagues.append((sport, league))
+                                        _LOGGER.debug("Sports: Found team '%s' (id=%s) in %s/%s", full_name, team_id, sport, league)
+                                        if not team_found:
+                                            team_found = True
                                         break
-                        if team_found:
-                            break
 
                 if not team_found:
+                    _LOGGER.debug("Sports: Team '%s' not found in any league", team_name)
                     return {"error": f"Team '{team_name}' not found. Try the full team name (e.g., 'Miami Heat', 'New York Yankees')"}
 
                 result = {"team": full_name}
 
-                # Check scoreboard FIRST for live games (schedule endpoint often has stale data)
+                # Check scoreboard FIRST for live AND upcoming games (schedule endpoint often has stale data)
+                # For soccer teams, check multiple league scoreboards (EPL, UCL, FA Cup, etc.)
                 live_game_from_scoreboard = None
+                next_game_from_scoreboard = None
                 try:
-                    today = datetime.now().strftime("%Y%m%d")
-                    scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={today}"
-                    async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
-                        if sb_resp.status == 200:
+                    # Build list of scoreboards to check - use team_leagues which has the correct saved values
+                    # (sport, league variables may have been overwritten by for loop iteration)
+                    found_sport, found_league = team_leagues[0] if team_leagues else (sport, league)
+                    scoreboards_to_check = [(found_sport, found_league)]
+                    if found_sport == "soccer":
+                        # Soccer teams play in multiple competitions - check all major ones
+                        soccer_leagues = ["eng.1", "uefa.champions", "eng.fa", "eng.league_cup", "usa.1", "esp.1", "ger.1", "ita.1", "fra.1"]
+                        for sl in soccer_leagues:
+                            if (found_sport, sl) not in scoreboards_to_check:
+                                scoreboards_to_check.append((found_sport, sl))
+
+                    _LOGGER.debug("Sports: Checking %d scoreboards for team_id=%s", len(scoreboards_to_check), team_id)
+                    for sb_sport, sb_league in scoreboards_to_check:
+                        if live_game_from_scoreboard and next_game_from_scoreboard:
+                            break  # Already found both
+
+                        # Don't filter by date - scoreboard without date returns upcoming games too
+                        scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sb_sport}/{sb_league}/scoreboard"
+                        async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
+                            if sb_resp.status != 200:
+                                _LOGGER.debug("Sports: Scoreboard %s returned status %s", sb_league, sb_resp.status)
+                                continue
                             sb_data = await sb_resp.json()
+                            _LOGGER.debug("Sports: %s has %d events", sb_league, len(sb_data.get("events", [])))
                             for sb_event in sb_data.get("events", []):
                                 sb_comp = sb_event.get("competitions", [{}])[0]
                                 sb_status = sb_comp.get("status", {}).get("type", {})
-
-                                # Only look for in-progress games
-                                if sb_status.get("state") != "in":
-                                    continue
+                                sb_state = sb_status.get("state", "")
 
                                 sb_competitors = sb_comp.get("competitors", [])
                                 sb_team_ids = [c.get("team", {}).get("id", "") for c in sb_competitors]
 
                                 # Check if our team is in this game
-                                if team_id in sb_team_ids:
-                                    home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
-                                    away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
+                                if team_id not in sb_team_ids:
+                                    continue
 
-                                    home_name = home_team_sb.get("team", {}).get("displayName", "Home")
-                                    away_name = away_team_sb.get("team", {}).get("displayName", "Away")
+                                _LOGGER.debug("Sports: Found team %s in %s, state=%s", team_id, sb_league, sb_state)
 
-                                    # Scoreboard scores are strings
+                                home_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "home"), {})
+                                away_team_sb = next((c for c in sb_competitors if c.get("homeAway") == "away"), {})
+
+                                home_name = home_team_sb.get("team", {}).get("displayName", "Home")
+                                away_name = away_team_sb.get("team", {}).get("displayName", "Away")
+
+                                if sb_state == "in":
+                                    # Live game
                                     home_score = home_team_sb.get("score", "0")
                                     away_score = away_team_sb.get("score", "0")
                                     if isinstance(home_score, dict):
@@ -2269,7 +2307,43 @@ class LMStudioConversationEntity(ConversationEntity):
                                         "summary": f"LIVE: {away_name} {away_score} @ {home_name} {home_score} ({status_detail})"
                                     }
                                     live_game_from_scoreboard = True
-                                    break
+
+                                elif sb_state == "pre" and not next_game_from_scoreboard:
+                                    # Upcoming game - format the date nicely
+                                    game_date_str = sb_event.get("date", "")
+                                    if game_date_str:
+                                        try:
+                                            game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
+                                            game_dt_local = game_dt.astimezone(dt_util.get_time_zone(self.hass.config.time_zone))
+                                            now_local = datetime.now(dt_util.get_time_zone(self.hass.config.time_zone))
+
+                                            game_date_only = game_dt_local.date()
+                                            today_date = now_local.date()
+                                            tomorrow_date = today_date + timedelta(days=1)
+
+                                            time_str = game_dt_local.strftime("%I:%M %p").lstrip("0")
+                                            if game_date_only == today_date:
+                                                formatted_date = f"Today at {time_str}"
+                                            elif game_date_only == tomorrow_date:
+                                                formatted_date = f"Tomorrow at {time_str}"
+                                            else:
+                                                formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
+                                        except (ValueError, KeyError, TypeError, AttributeError):
+                                            formatted_date = sb_status.get("detail", "TBD")
+                                    else:
+                                        formatted_date = sb_status.get("detail", "TBD")
+
+                                    venue = sb_comp.get("venue", {}).get("fullName", "")
+
+                                    result["next_game"] = {
+                                        "date": formatted_date,
+                                        "home_team": home_name,
+                                        "away_team": away_name,
+                                        "venue": venue,
+                                        "summary": f"{away_name} @ {home_name} - {formatted_date}"
+                                    }
+                                    next_game_from_scoreboard = True
+
                 except Exception as e:
                     _LOGGER.warning("Failed to check scoreboard for live games: %s", e)
 
@@ -2280,7 +2354,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
                 events = data.get("events", [])
 
-                if not events and not live_game_from_scoreboard:
+                if not events and not live_game_from_scoreboard and not next_game_from_scoreboard:
                     return {"error": f"No scheduled games found for {full_name}"}
 
                 # Find last completed game, live game, and next upcoming game
@@ -2403,8 +2477,8 @@ class LMStudioConversationEntity(ConversationEntity):
                         "summary": f"LIVE: {away_name} {away_score} @ {home_name} {home_score} ({status_detail})"
                     }
 
-                # Format next game
-                if query_type in ["next_game", "both"] and next_game:
+                # Format next game (skip if already got from scoreboard)
+                if query_type in ["next_game", "both"] and next_game and not next_game_from_scoreboard:
                     comp = next_game.get("competitions", [{}])[0]
                     competitors = comp.get("competitors", [])
                     home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
