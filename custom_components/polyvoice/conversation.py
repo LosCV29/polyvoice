@@ -2243,14 +2243,16 @@ class LMStudioConversationEntity(ConversationEntity):
                 live_game_from_scoreboard = None
                 next_game_from_scoreboard = None
                 try:
-                    # Build list of scoreboards to check
-                    scoreboards_to_check = [(sport, league)]
-                    if sport == "soccer":
+                    # Build list of scoreboards to check - use team_leagues which has the correct saved values
+                    # (sport, league variables may have been overwritten by for loop iteration)
+                    found_sport, found_league = team_leagues[0] if team_leagues else (sport, league)
+                    scoreboards_to_check = [(found_sport, found_league)]
+                    if found_sport == "soccer":
                         # Soccer teams play in multiple competitions - check all major ones
                         soccer_leagues = ["eng.1", "uefa.champions", "eng.fa", "eng.league_cup", "usa.1", "esp.1", "ger.1", "ita.1", "fra.1"]
                         for sl in soccer_leagues:
-                            if (sport, sl) not in scoreboards_to_check:
-                                scoreboards_to_check.append((sport, sl))
+                            if (found_sport, sl) not in scoreboards_to_check:
+                                scoreboards_to_check.append((found_sport, sl))
 
                     _LOGGER.warning("=== SPORTS: Checking %d scoreboards for team_id=%s ===", len(scoreboards_to_check), team_id)
                     for sb_sport, sb_league in scoreboards_to_check:
