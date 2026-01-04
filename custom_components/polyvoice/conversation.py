@@ -986,16 +986,16 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control music playback via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer.",
+                    "description": f"Control music playback via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle. Use 'shuffle' to find and play a playlist in shuffle mode.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer"],
-                                "description": "The music action to perform"
+                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer", "shuffle"],
+                                "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled."
                             },
-                            "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre)"},
+                            "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
                             "media_type": {
                                 "type": "string",
@@ -3565,6 +3565,100 @@ class LMStudioConversationEntity(ConversationEntity):
                             {"entity_id": self.last_active_speaker, "value": target}
                         )
                     return {"status": "transferred", "message": f"Music transferred to {get_room_name(target)}"}
+
+                elif action == "shuffle":
+                    # Search for a playlist matching the query and play it shuffled
+                    if not query:
+                        return {"error": "No search query specified for shuffle"}
+                    if not target_players:
+                        return {"error": f"No room specified. Available: {', '.join(players.keys())}"}
+
+                    _LOGGER.info("Searching for playlist matching: %s", query)
+
+                    # Search Music Assistant for playlists
+                    try:
+                        # Get Music Assistant config entry ID (required for search)
+                        ma_entries = self.hass.config_entries.async_entries("music_assistant")
+                        if not ma_entries:
+                            return {"error": "Music Assistant integration not found"}
+                        ma_config_entry_id = ma_entries[0].entry_id
+
+                        search_result = await self.hass.services.async_call(
+                            "music_assistant", "search",
+                            {
+                                "config_entry_id": ma_config_entry_id,
+                                "name": query,
+                                "media_type": ["playlist"],
+                                "limit": 5
+                            },
+                            blocking=True,
+                            return_response=True
+                        )
+                        _LOGGER.info("Search result: %s", search_result)
+
+                        # Extract playlist from results
+                        playlist_name = None
+                        playlist_uri = None
+
+                        if search_result:
+                            # Handle different response formats
+                            playlists = []
+                            if isinstance(search_result, dict):
+                                # Could be {"playlists": [...]} or direct list
+                                playlists = search_result.get("playlists", [])
+                                if not playlists and "items" in search_result:
+                                    playlists = search_result.get("items", [])
+                            elif isinstance(search_result, list):
+                                playlists = search_result
+
+                            if playlists and len(playlists) > 0:
+                                first_playlist = playlists[0]
+                                playlist_name = first_playlist.get("name") or first_playlist.get("title", "Unknown Playlist")
+                                playlist_uri = first_playlist.get("uri") or first_playlist.get("media_id")
+
+                        if not playlist_uri:
+                            # Fallback: try playing as playlist directly
+                            _LOGGER.info("No playlist found via search, trying direct play with query: %s", query)
+                            playlist_name = query
+                            playlist_uri = query
+
+                        # Play the playlist with shuffle
+                        player = target_players[0]
+                        await self.hass.services.async_call(
+                            "music_assistant", "play_media",
+                            {
+                                "media_id": playlist_uri,
+                                "media_type": "playlist",
+                                "enqueue": "replace"
+                            },
+                            target={"entity_id": player},
+                            blocking=True
+                        )
+
+                        # Enable shuffle
+                        await self.hass.services.async_call(
+                            "media_player", "shuffle_set",
+                            {"entity_id": player, "shuffle": True},
+                            blocking=True
+                        )
+
+                        # Track last active
+                        if self.last_active_speaker:
+                            await self.hass.services.async_call(
+                                "input_text", "set_value",
+                                {"entity_id": self.last_active_speaker, "value": player}
+                            )
+
+                        return {
+                            "status": "shuffling",
+                            "playlist_name": playlist_name,
+                            "room": room,
+                            "message": f"Shuffling {playlist_name} in the {room}"
+                        }
+
+                    except Exception as search_err:
+                        _LOGGER.error("Shuffle search/play error: %s", search_err, exc_info=True)
+                        return {"error": f"Failed to find or play playlist: {str(search_err)}"}
 
                 else:
                     return {"error": f"Unknown action: {action}"}
