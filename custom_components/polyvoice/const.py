@@ -303,19 +303,3 @@ DEFAULT_OPENWEATHERMAP_API_KEY: Final = ""
 DEFAULT_GOOGLE_PLACES_API_KEY: Final = ""
 DEFAULT_YELP_API_KEY: Final = ""
 DEFAULT_NEWSAPI_KEY: Final = ""
-
-# =============================================================================
-# GAMING MODE - Cloud Fallback Settings
-# =============================================================================
-CONF_GAMING_MODE_ENTITY: Final = "gaming_mode_entity"
-CONF_CLOUD_FALLBACK_PROVIDER: Final = "cloud_fallback_provider"
-CONF_CLOUD_FALLBACK_MODEL: Final = "cloud_fallback_model"
-CONF_CLOUD_FALLBACK_API_KEY: Final = "cloud_fallback_api_key"
-
-DEFAULT_GAMING_MODE_ENTITY: Final = "input_boolean.gaming_mode"
-DEFAULT_CLOUD_FALLBACK_PROVIDER: Final = PROVIDER_OPENROUTER
-DEFAULT_CLOUD_FALLBACK_MODEL: Final = "nvidia/nemotron-nano:free"
-DEFAULT_CLOUD_FALLBACK_API_KEY: Final = ""
-
-# Local providers that should switch to cloud when gaming mode is on
-LOCAL_PROVIDERS: Final = [PROVIDER_LM_STUDIO, PROVIDER_OLLAMA]
