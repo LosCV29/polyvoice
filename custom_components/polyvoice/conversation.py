@@ -640,38 +640,75 @@ class LMStudioConversationEntity(ConversationEntity):
         # Add LLM device control instructions and FULL device list when native intents are disabled
         if not self.use_native_intents:
             filtered_lines.append("")
-            filtered_lines.append("=" * 60)
-            filtered_lines.append("PURE LLM MODE - FULL SMART HOME CONTROL")
-            filtered_lines.append("=" * 60)
+            filtered_lines.append("=" * 70)
+            filtered_lines.append("PURE LLM MODE - COMPLETE SMART HOME CONTROL (ALL HA INTENTS)")
+            filtered_lines.append("=" * 70)
             filtered_lines.append("")
-            filtered_lines.append("!!! CRITICAL - ANTI-HALLUCINATION RULES !!!")
-            filtered_lines.append("1. You MUST call the control_device tool to control ANY device")
-            filtered_lines.append("2. NEVER say you did something without calling the tool first")
-            filtered_lines.append("3. NEVER assume success - only confirm based on tool response")
-            filtered_lines.append("4. If a tool returns an error, tell the user what went wrong")
-            filtered_lines.append("5. If you can't find a device, say so - don't pretend to control it")
-            filtered_lines.append("6. WAIT for the tool response before confirming any action")
+            filtered_lines.append("!!! CRITICAL RULES - MUST FOLLOW !!!")
+            filtered_lines.append("1. ALWAYS call control_device tool - NEVER claim success without it")
+            filtered_lines.append("2. Use entity_id from device list below - fastest & most accurate")
+            filtered_lines.append("3. Respond BRIEFLY after tool confirms success")
             filtered_lines.append("")
-            filtered_lines.append("DEVICE CONTROL - Use the control_device tool with:")
-            filtered_lines.append("- entity_id: PREFERRED - exact entity ID (e.g., 'cover.living_room_shades')")
-            filtered_lines.append("- entity_ids: Multiple entity IDs at once")
-            filtered_lines.append("- area + domain: All devices of type in area")
-            filtered_lines.append("- device: Fuzzy name matching (fallback)")
+            filtered_lines.append("-" * 50)
+            filtered_lines.append("QUICK REFERENCE - CONTROL_DEVICE ACTIONS")
+            filtered_lines.append("-" * 50)
             filtered_lines.append("")
-            filtered_lines.append("ACTIONS:")
-            filtered_lines.append("- turn_on / turn_off / toggle - lights, switches, fans")
-            filtered_lines.append("- lock / unlock - locks")
-            filtered_lines.append("- open / close - covers (garage doors, blinds, shades)")
-            filtered_lines.append("- stop - stop cover movement")
-            filtered_lines.append("- preset / favorite - set cover to favorite/preset position")
-            filtered_lines.append("- position (0-100) - set cover to specific position (0=closed, 100=open)")
-            filtered_lines.append("- brightness (0-100) - set light brightness")
+            filtered_lines.append("LIGHTS:")
+            filtered_lines.append("  turn_on, turn_off, toggle")
+            filtered_lines.append("  brightness=0-100 (with turn_on)")
+            filtered_lines.append("  color='red'/'blue'/etc OR color_temp=2700-6500 (Kelvin)")
             filtered_lines.append("")
-            filtered_lines.append("EXAMPLES:")
-            filtered_lines.append("- 'Set shades to favorite' -> control_device(entity_id='cover.xxx', action='preset')")
-            filtered_lines.append("- 'Open blinds halfway' -> control_device(entity_id='cover.xxx', action='position', position=50)")
-            filtered_lines.append("- 'Turn off kitchen' -> control_device(area='Kitchen', domain='light', action='turn_off')")
+            filtered_lines.append("SWITCHES/FANS/OUTLETS:")
+            filtered_lines.append("  turn_on, turn_off, toggle")
+            filtered_lines.append("  fan_speed='low'/'medium'/'high' (fans only)")
             filtered_lines.append("")
+            filtered_lines.append("COVERS (blinds/shades/garage):")
+            filtered_lines.append("  open, close, stop, toggle")
+            filtered_lines.append("  position=0-100 (0=closed, 100=open)")
+            filtered_lines.append("  preset/favorite (go to saved position)")
+            filtered_lines.append("")
+            filtered_lines.append("LOCKS:")
+            filtered_lines.append("  lock, unlock")
+            filtered_lines.append("")
+            filtered_lines.append("MEDIA PLAYERS:")
+            filtered_lines.append("  play, pause, stop, next, previous")
+            filtered_lines.append("  volume=0-100, mute, unmute")
+            filtered_lines.append("  media_content='song/station name', media_type='music'/'playlist'")
+            filtered_lines.append("")
+            filtered_lines.append("CLIMATE/THERMOSTATS:")
+            filtered_lines.append("  set_temperature, temperature=XX (degrees)")
+            filtered_lines.append("  hvac_mode='heat'/'cool'/'auto'/'off'")
+            filtered_lines.append("")
+            filtered_lines.append("VACUUMS:")
+            filtered_lines.append("  start, stop, dock, locate, return_home")
+            filtered_lines.append("")
+            filtered_lines.append("SCENES/SCRIPTS:")
+            filtered_lines.append("  activate (or turn_on)")
+            filtered_lines.append("")
+            filtered_lines.append("-" * 50)
+            filtered_lines.append("NATURAL LANGUAGE PATTERNS -> TOOL CALLS")
+            filtered_lines.append("-" * 50)
+            filtered_lines.append("")
+            filtered_lines.append("'Turn on/off [device]' -> action='turn_on'/'turn_off', entity_id='...'")
+            filtered_lines.append("'Dim [light] to 50%' -> action='turn_on', brightness=50, entity_id='...'")
+            filtered_lines.append("'Make it warmer/cooler' -> action='set_temperature', temperature=+/-2 from current")
+            filtered_lines.append("'Set temp to 72' -> action='set_temperature', temperature=72")
+            filtered_lines.append("'Lock/unlock [door]' -> action='lock'/'unlock', entity_id='...'")
+            filtered_lines.append("'Open/close [cover]' -> action='open'/'close', entity_id='...'")
+            filtered_lines.append("'Set shades to 50%' -> action='set_position', position=50, entity_id='...'")
+            filtered_lines.append("'Favorite position' -> action='preset', entity_id='...'")
+            filtered_lines.append("'Pause the music' -> action='pause', entity_id='media_player.xxx'")
+            filtered_lines.append("'Volume up/down' -> action='volume_up'/'volume_down'")
+            filtered_lines.append("'Set volume to 50' -> action='set_volume', volume=50")
+            filtered_lines.append("'Start the vacuum' -> action='start', entity_id='vacuum.xxx'")
+            filtered_lines.append("'Send vacuum home' -> action='dock'")
+            filtered_lines.append("'Turn off everything' -> area='...', domain='all', action='turn_off'")
+            filtered_lines.append("'All lights off in kitchen' -> area='Kitchen', domain='light', action='turn_off'")
+            filtered_lines.append("'Activate movie mode' -> action='activate', entity_id='scene.movie_mode'")
+            filtered_lines.append("")
+            filtered_lines.append("-" * 50)
+            filtered_lines.append("YOUR COMPLETE DEVICE LIST")
+            filtered_lines.append("-" * 50)
 
             # Inject the FULL device list
             device_list = self._discover_all_devices()
@@ -1270,44 +1307,70 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_device",
-                    "description": "Control smart home devices. MUST use this tool - NEVER claim success without calling it. PREFERRED: Use entity_id for accuracy.",
+                    "description": "Control ANY smart home device. MUST call this - NEVER claim success without it. Use entity_id from device list.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "entity_id": {
                                 "type": "string",
-                                "description": "PREFERRED: Exact entity ID from device list (e.g., 'cover.living_room_shades', 'light.kitchen')"
+                                "description": "PREFERRED: Exact entity ID (e.g., 'light.kitchen', 'cover.blinds')"
                             },
                             "entity_ids": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Multiple entity IDs to control at once"
+                                "description": "Multiple entity IDs at once"
                             },
                             "device": {
                                 "type": "string",
-                                "description": "FALLBACK: Fuzzy device name if entity_id unknown"
+                                "description": "FALLBACK: Fuzzy name match"
                             },
                             "area": {
                                 "type": "string",
-                                "description": "Control ALL devices of type in an area (e.g., 'Kitchen', 'Living Room')"
+                                "description": "Control all devices in area"
                             },
                             "domain": {
                                 "type": "string",
-                                "enum": ["light", "switch", "lock", "cover", "fan", "all"],
-                                "description": "Device type filter when using area"
+                                "enum": ["light", "switch", "lock", "cover", "fan", "media_player", "climate", "vacuum", "scene", "script", "all"],
+                                "description": "Device type filter for area"
                             },
                             "action": {
                                 "type": "string",
-                                "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position"],
-                                "description": "Action: turn_on/off, lock/unlock, open/close, stop (covers), preset/favorite (cover preset position), set_position (cover 0-100)"
+                                "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position", "play", "pause", "next", "previous", "volume_up", "volume_down", "set_volume", "mute", "unmute", "set_temperature", "start", "dock", "locate", "return_home", "activate"],
+                                "description": "Action to perform"
                             },
                             "brightness": {
                                 "type": "integer",
-                                "description": "Brightness 0-100 for lights"
+                                "description": "Light brightness 0-100"
+                            },
+                            "color": {
+                                "type": "string",
+                                "description": "Light color name (red, blue, warm, cool, etc.)"
+                            },
+                            "color_temp": {
+                                "type": "integer",
+                                "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"
                             },
                             "position": {
                                 "type": "integer",
-                                "description": "Position 0-100 for covers (0=closed, 100=fully open)"
+                                "description": "Cover position 0-100 (0=closed)"
+                            },
+                            "volume": {
+                                "type": "integer",
+                                "description": "Volume level 0-100"
+                            },
+                            "temperature": {
+                                "type": "number",
+                                "description": "Target temperature for climate"
+                            },
+                            "hvac_mode": {
+                                "type": "string",
+                                "enum": ["heat", "cool", "auto", "off", "fan_only", "dry"],
+                                "description": "HVAC mode for climate"
+                            },
+                            "fan_speed": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "auto"],
+                                "description": "Fan speed"
                             }
                         },
                         "required": ["action"]
@@ -3498,10 +3561,16 @@ class LMStudioConversationEntity(ConversationEntity):
             }
 
         elif tool_name == "control_device":
-            # Control smart home devices (Pure LLM Mode) - supports multiple input methods
+            # Control smart home devices (Pure LLM Mode) - ALL HA INTENTS SUPPORTED
             action = arguments.get("action", "").strip().lower()
             brightness = arguments.get("brightness")
             position = arguments.get("position")
+            color = arguments.get("color", "").strip().lower()
+            color_temp = arguments.get("color_temp")
+            volume = arguments.get("volume")
+            temperature = arguments.get("temperature")
+            hvac_mode = arguments.get("hvac_mode", "").strip().lower()
+            fan_speed = arguments.get("fan_speed", "").strip().lower()
 
             # Input methods (in priority order)
             direct_entity_id = arguments.get("entity_id", "").strip()
@@ -3511,50 +3580,82 @@ class LMStudioConversationEntity(ConversationEntity):
             device_name = arguments.get("device", "").strip()
 
             if not action:
-                return {"error": "No action specified. Use turn_on, turn_off, toggle, lock, unlock, open, close, stop, preset, favorite, or set_position."}
+                return {"error": "No action specified."}
 
-            # Normalize preset/favorite to same action
+            # Normalize actions
             if action == "favorite":
                 action = "preset"
+            if action == "return_home":
+                action = "dock"
+            if action == "activate":
+                action = "turn_on"
 
-            # Map actions to appropriate HA services based on domain
+            # Comprehensive service map for ALL HA domains
             service_map = {
-                "light": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
-                "switch": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
-                "fan": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
-                "lock": {"lock": "lock", "unlock": "unlock", "turn_on": "lock", "turn_off": "unlock"},
-                "cover": {
-                    "open": "open_cover",
-                    "close": "close_cover",
-                    "turn_on": "open_cover",
-                    "turn_off": "close_cover",
-                    "toggle": "toggle",
-                    "stop": "stop_cover",
-                    "set_position": "set_cover_position",
-                    "preset": "set_cover_position",  # Will use preset position from attributes
+                "light": {
+                    "turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"
                 },
+                "switch": {
+                    "turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"
+                },
+                "fan": {
+                    "turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle",
+                    "set_speed": "set_percentage"
+                },
+                "lock": {
+                    "lock": "lock", "unlock": "unlock", "turn_on": "lock", "turn_off": "unlock"
+                },
+                "cover": {
+                    "open": "open_cover", "close": "close_cover", "toggle": "toggle",
+                    "turn_on": "open_cover", "turn_off": "close_cover",
+                    "stop": "stop_cover", "set_position": "set_cover_position",
+                    "preset": "set_cover_position"
+                },
+                "climate": {
+                    "turn_on": "turn_on", "turn_off": "turn_off",
+                    "set_temperature": "set_temperature", "set_hvac_mode": "set_hvac_mode"
+                },
+                "media_player": {
+                    "turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle",
+                    "play": "media_play", "pause": "media_pause", "stop": "media_stop",
+                    "next": "media_next_track", "previous": "media_previous_track",
+                    "volume_up": "volume_up", "volume_down": "volume_down",
+                    "set_volume": "volume_set", "mute": "volume_mute", "unmute": "volume_mute"
+                },
+                "vacuum": {
+                    "turn_on": "start", "start": "start", "turn_off": "return_to_base",
+                    "stop": "stop", "dock": "return_to_base", "locate": "locate",
+                    "return_home": "return_to_base"
+                },
+                "scene": {"turn_on": "turn_on", "activate": "turn_on"},
+                "script": {"turn_on": "turn_on", "turn_off": "turn_off"},
                 "input_boolean": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
                 "automation": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
-                "scene": {"turn_on": "turn_on"},
-                "script": {"turn_on": "turn_on", "turn_off": "turn_off"},
-                "vacuum": {"turn_on": "start", "turn_off": "return_to_base"},
-                "media_player": {"turn_on": "turn_on", "turn_off": "turn_off", "toggle": "toggle"},
                 "button": {"turn_on": "press", "press": "press"},
+                "siren": {"turn_on": "turn_on", "turn_off": "turn_off"},
+                "humidifier": {"turn_on": "turn_on", "turn_off": "turn_off"},
             }
 
             action_words = {
-                "turn_on": "turned on",
-                "turn_off": "turned off",
-                "toggle": "toggled",
-                "lock": "locked",
-                "unlock": "unlocked",
-                "open_cover": "opened",
-                "close_cover": "closed",
-                "stop_cover": "stopped",
+                "turn_on": "turned on", "turn_off": "turned off", "toggle": "toggled",
+                "lock": "locked", "unlock": "unlocked",
+                "open_cover": "opened", "close_cover": "closed", "stop_cover": "stopped",
                 "set_cover_position": "set position for",
-                "start": "started",
-                "return_to_base": "sent home",
-                "press": "pressed",
+                "start": "started", "return_to_base": "sent home", "stop": "stopped",
+                "locate": "located", "press": "pressed",
+                "media_play": "playing", "media_pause": "paused", "media_stop": "stopped",
+                "media_next_track": "skipped to next", "media_previous_track": "went back to previous",
+                "volume_up": "turned up", "volume_down": "turned down",
+                "volume_set": "set volume for", "volume_mute": "muted/unmuted",
+                "set_temperature": "set temperature for", "set_hvac_mode": "set mode for",
+            }
+
+            # Color name to RGB mapping
+            color_map = {
+                "red": [255, 0, 0], "green": [0, 255, 0], "blue": [0, 0, 255],
+                "yellow": [255, 255, 0], "orange": [255, 165, 0], "purple": [128, 0, 128],
+                "pink": [255, 192, 203], "white": [255, 255, 255], "cyan": [0, 255, 255],
+                "warm": None, "cool": None,  # These use color_temp instead
             }
 
             # Collect entities to control
@@ -3674,9 +3775,43 @@ class LMStudioConversationEntity(ConversationEntity):
                     # Build service data
                     service_data = {"entity_id": entity_id}
 
-                    # Add brightness for lights if specified
-                    if domain == "light" and brightness is not None and action == "turn_on":
-                        service_data["brightness_pct"] = max(0, min(100, brightness))
+                    # === LIGHT CONTROLS ===
+                    if domain == "light" and action == "turn_on":
+                        if brightness is not None:
+                            service_data["brightness_pct"] = max(0, min(100, brightness))
+                        if color and color in color_map and color_map[color]:
+                            service_data["rgb_color"] = color_map[color]
+                        elif color == "warm":
+                            service_data["color_temp_kelvin"] = 2700
+                        elif color == "cool":
+                            service_data["color_temp_kelvin"] = 6500
+                        if color_temp is not None:
+                            service_data["color_temp_kelvin"] = max(2000, min(6500, color_temp))
+
+                    # === MEDIA PLAYER CONTROLS ===
+                    if domain == "media_player":
+                        if action == "set_volume" and volume is not None:
+                            service_data["volume_level"] = max(0, min(100, volume)) / 100.0
+                        if action == "mute":
+                            service_data["is_volume_muted"] = True
+                        if action == "unmute":
+                            service_data["is_volume_muted"] = False
+
+                    # === CLIMATE CONTROLS ===
+                    if domain == "climate":
+                        if action == "set_temperature" and temperature is not None:
+                            service_data["temperature"] = temperature
+                        if hvac_mode:
+                            # If just setting hvac_mode, use that service
+                            if action == "set_hvac_mode" or (action == "turn_on" and hvac_mode):
+                                service = "set_hvac_mode"
+                                service_data["hvac_mode"] = hvac_mode
+
+                    # === FAN CONTROLS ===
+                    if domain == "fan" and fan_speed:
+                        speed_map = {"low": 33, "medium": 66, "high": 100, "auto": 50}
+                        if fan_speed in speed_map:
+                            service_data["percentage"] = speed_map[fan_speed]
 
                     # Handle cover position
                     if domain == "cover" and action == "set_position" and position is not None:
