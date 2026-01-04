@@ -3687,10 +3687,12 @@ class LMStudioConversationEntity(ConversationEntity):
                         # First, try to find a button entity for this cover's favorite/preset
                         cover_name = entity_id.split(".")[-1]
                         possible_buttons = [
+                            f"button.{cover_name}_my_position",  # Common pattern (e.g., living_room_shade_my_position)
                             f"button.{cover_name}_favorite_position",
                             f"button.{cover_name}_preset_position",
                             f"button.{cover_name}_favorite",
                             f"button.{cover_name}_preset",
+                            f"button.{cover_name}_my",
                         ]
 
                         button_found = False
@@ -3703,23 +3705,27 @@ class LMStudioConversationEntity(ConversationEntity):
                                 )
                                 button_found = True
                                 _LOGGER.info("Pressed preset button %s for cover %s", button_id, entity_id)
+                                controlled.append(friendly_name)
                                 break
 
-                        if not button_found:
-                            # No button found, check for preset_position attribute or use 50% as default
-                            state = self.hass.states.get(entity_id)
-                            preset_pos = None
-                            if state:
-                                preset_pos = state.attributes.get("preset_position")
-                                if preset_pos is None:
-                                    preset_pos = state.attributes.get("favorite_position")
+                        if button_found:
+                            # Button was pressed, skip the cover service call
+                            continue
 
-                            if preset_pos is not None:
-                                service_data["position"] = preset_pos
-                            else:
-                                # Default to 50% if no preset found
-                                _LOGGER.warning("No preset position found for %s, using 50%%", entity_id)
-                                service_data["position"] = 50
+                        # No button found, check for preset_position attribute or use 50% as default
+                        state = self.hass.states.get(entity_id)
+                        preset_pos = None
+                        if state:
+                            preset_pos = state.attributes.get("preset_position")
+                            if preset_pos is None:
+                                preset_pos = state.attributes.get("favorite_position")
+
+                        if preset_pos is not None:
+                            service_data["position"] = preset_pos
+                        else:
+                            # Default to 50% if no preset found
+                            _LOGGER.warning("No preset position found for %s, using 50%%", entity_id)
+                            service_data["position"] = 50
 
                     # Call the service
                     await self.hass.services.async_call(
