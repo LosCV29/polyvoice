@@ -2190,6 +2190,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 team_found = False
                 url = None
                 full_name = team_name
+                team_leagues = []  # Track all leagues this team plays in
 
                 # Two-pass search: exact abbreviation match first, then substring match
                 for match_type in ["abbrev", "name"]:
@@ -2213,10 +2214,10 @@ class LMStudioConversationEntity(ConversationEntity):
                                         team_id = t.get("id", "")
                                         full_name = t.get("displayName", team_name)
                                         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{team_id}/schedule"
-                                        team_found = True
+                                        team_leagues.append((sport, league))
+                                        if not team_found:
+                                            team_found = True
                                         break
-                        if team_found:
-                            break
 
                 if not team_found:
                     return {"error": f"Team '{team_name}' not found. Try the full team name (e.g., 'Miami Heat', 'New York Yankees')"}
@@ -2224,13 +2225,29 @@ class LMStudioConversationEntity(ConversationEntity):
                 result = {"team": full_name}
 
                 # Check scoreboard FIRST for live AND upcoming games (schedule endpoint often has stale data)
+                # For soccer teams, check multiple league scoreboards (EPL, UCL, FA Cup, etc.)
                 live_game_from_scoreboard = None
                 next_game_from_scoreboard = None
                 try:
                     today = datetime.now().strftime("%Y%m%d")
-                    scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={today}"
-                    async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
-                        if sb_resp.status == 200:
+
+                    # Build list of scoreboards to check
+                    scoreboards_to_check = [(sport, league)]
+                    if sport == "soccer":
+                        # Soccer teams play in multiple competitions - check all major ones
+                        soccer_leagues = ["eng.1", "uefa.champions", "eng.fa", "eng.league_cup", "usa.1", "esp.1", "ger.1", "ita.1", "fra.1"]
+                        for sl in soccer_leagues:
+                            if (sport, sl) not in scoreboards_to_check:
+                                scoreboards_to_check.append((sport, sl))
+
+                    for sb_sport, sb_league in scoreboards_to_check:
+                        if live_game_from_scoreboard and next_game_from_scoreboard:
+                            break  # Already found both
+
+                        scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{sb_sport}/{sb_league}/scoreboard?dates={today}"
+                        async with self._session.get(scoreboard_url, headers=headers) as sb_resp:
+                            if sb_resp.status != 200:
+                                continue
                             sb_data = await sb_resp.json()
                             for sb_event in sb_data.get("events", []):
                                 sb_comp = sb_event.get("competitions", [{}])[0]
