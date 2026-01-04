@@ -137,6 +137,75 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Providers that support dynamic model fetching via OpenAI-compatible /models endpoint
+DYNAMIC_MODEL_PROVIDERS = [
+    PROVIDER_OPENAI,
+    PROVIDER_GROQ,
+    PROVIDER_OPENROUTER,
+    PROVIDER_LM_STUDIO,
+    PROVIDER_OLLAMA,
+]
+
+
+async def fetch_provider_models(
+    provider: str, base_url: str, api_key: str
+) -> list[str]:
+    """Fetch available models from provider API.
+
+    Returns a list of model IDs, or empty list if fetch fails.
+    """
+    if provider not in DYNAMIC_MODEL_PROVIDERS:
+        return []
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            url = f"{base_url}/models"
+            async with session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    _LOGGER.warning(
+                        "Failed to fetch models from %s: status %s",
+                        provider, response.status
+                    )
+                    return []
+
+                data = await response.json()
+                models = data.get("data", [])
+
+                # Extract model IDs and filter for chat models
+                model_ids = []
+                for model in models:
+                    model_id = model.get("id", "")
+                    if not model_id:
+                        continue
+
+                    # Skip non-chat models (whisper, tts, embedding, guard/safeguard models)
+                    lower_id = model_id.lower()
+                    if any(skip in lower_id for skip in [
+                        "whisper", "tts", "embedding", "embed",
+                        "guard", "safeguard", "moderation",
+                        "audio", "speech", "vision-preview"
+                    ]):
+                        continue
+
+                    model_ids.append(model_id)
+
+                # Sort alphabetically for better UX
+                model_ids.sort()
+                _LOGGER.info("Fetched %d models from %s", len(model_ids), provider)
+                return model_ids
+
+    except Exception as e:
+        _LOGGER.warning("Error fetching models from %s: %s", provider, e)
+        return []
+
 
 class LMStudioAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for PolyVoice."""
@@ -423,13 +492,22 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         current = {**self._entry.data, **self._entry.options}
         current_provider = current.get(CONF_PROVIDER, DEFAULT_PROVIDER)
         current_model = current.get(CONF_MODEL, DEFAULT_MODEL)
+        current_base_url = current.get(CONF_BASE_URL, PROVIDER_BASE_URLS.get(current_provider, DEFAULT_BASE_URL))
+        current_api_key = current.get(CONF_API_KEY, "")
 
-        # Build model options for the current provider
-        provider_models = PROVIDER_MODELS.get(current_provider, [DEFAULT_MODEL])
+        # Try to fetch models dynamically from the provider API
+        provider_models = await fetch_provider_models(
+            current_provider, current_base_url, current_api_key
+        )
+
+        # Fall back to static list if dynamic fetch fails or returns empty
+        if not provider_models:
+            provider_models = list(PROVIDER_MODELS.get(current_provider, [DEFAULT_MODEL]))
+            _LOGGER.debug("Using static model list for %s", current_provider)
 
         # Ensure current model is in the list (for custom models)
         if current_model and current_model not in provider_models:
-            provider_models = [current_model] + list(provider_models)
+            provider_models = [current_model] + provider_models
 
         model_options = [
             selector.SelectOptionDict(value=m, label=m)
