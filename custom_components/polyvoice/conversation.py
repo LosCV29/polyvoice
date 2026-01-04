@@ -591,6 +591,74 @@ class LMStudioConversationEntity(ConversationEntity):
         """Format a temperature value with the appropriate unit."""
         return f"{int(temp)}{self.temp_unit}"
 
+    def _get_effective_system_prompt(self) -> str:
+        """Build effective system prompt with disabled features filtered out.
+
+        This prevents the LLM from trying to call tools that aren't available,
+        which causes validation errors with providers like Groq that strictly
+        validate tool calls against the provided tools list.
+        """
+        system_prompt = self.system_prompt or ""
+
+        # Inject current date
+        current_date = datetime.now().strftime("%A, %B %d, %Y")
+        system_prompt = system_prompt.replace(
+            "[CURRENT_DATE_WILL_BE_INJECTED_HERE]",
+            f"TODAY'S DATE: {current_date}"
+        )
+
+        # Filter out lines for disabled features to prevent LLM from calling
+        # unavailable tools (Groq validates tool calls strictly)
+        lines = system_prompt.split('\n')
+        filtered_lines = []
+
+        for line in lines:
+            line_lower = line.lower()
+
+            # Skip camera instructions if cameras disabled
+            if not self.enable_cameras and ('check_camera' in line_lower or 'quick_camera_check' in line_lower):
+                continue
+
+            # Skip weather instructions if weather disabled
+            if not self.enable_weather and 'get_weather' in line_lower:
+                continue
+
+            # Skip thermostat instructions if thermostat disabled
+            if not self.enable_thermostat and 'control_thermostat' in line_lower:
+                continue
+
+            # Skip device status instructions if disabled
+            if not self.enable_device_status and 'check_device_status' in line_lower:
+                continue
+
+            # Skip sports instructions if disabled
+            if not self.enable_sports and 'get_sports_info' in line_lower:
+                continue
+
+            # Skip wikipedia instructions if disabled
+            if not self.enable_wikipedia and 'get_wikipedia_summary' in line_lower:
+                continue
+
+            # Skip places instructions if disabled
+            if not self.enable_places and 'find_nearby_places' in line_lower:
+                continue
+
+            # Skip restaurant instructions if disabled
+            if not self.enable_restaurants and 'get_restaurant_recommendations' in line_lower:
+                continue
+
+            # Skip news instructions if disabled
+            if not self.enable_news and 'get_news' in line_lower:
+                continue
+
+            # Skip calendar instructions if disabled
+            if not self.enable_calendar and 'get_calendar_events' in line_lower:
+                continue
+
+            filtered_lines.append(line)
+
+        return '\n'.join(filtered_lines)
+
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
@@ -1121,16 +1189,11 @@ class LMStudioConversationEntity(ConversationEntity):
         if not self._session:
             self._session = async_get_clientsession(self.hass)
         
-        # Build system prompt with date
-        system_prompt = self.system_prompt or ""
-        current_date = datetime.now().strftime("%A, %B %d, %Y")
-        system_prompt = system_prompt.replace(
-            "[CURRENT_DATE_WILL_BE_INJECTED_HERE]",
-            f"TODAY'S DATE: {current_date}"
-        )
-        
+        # Build system prompt with date and filtered for disabled features
+        system_prompt = self._get_effective_system_prompt()
+
         messages = [{"role": "user", "content": user_input.text}]
-        
+
         # Convert tools to Anthropic format
         anthropic_tools = []
         for tool in tools:
@@ -1225,14 +1288,9 @@ class LMStudioConversationEntity(ConversationEntity):
         if not self._session:
             self._session = async_get_clientsession(self.hass)
         
-        # Build system prompt with date
-        system_prompt = self.system_prompt or ""
-        current_date = datetime.now().strftime("%A, %B %d, %Y")
-        system_prompt = system_prompt.replace(
-            "[CURRENT_DATE_WILL_BE_INJECTED_HERE]",
-            f"TODAY'S DATE: {current_date}"
-        )
-        
+        # Build system prompt with date and filtered for disabled features
+        system_prompt = self._get_effective_system_prompt()
+
         # Convert tools to Gemini format
         gemini_tools = []
         if tools:
@@ -1341,16 +1399,12 @@ class LMStudioConversationEntity(ConversationEntity):
 
         messages = []
 
-        if self.system_prompt:
-            # Inject current date into system prompt
-            current_date = datetime.now().strftime("%A, %B %d, %Y")
-            system_prompt_with_date = self.system_prompt.replace(
-                "[CURRENT_DATE_WILL_BE_INJECTED_HERE]",
-                f"TODAY'S DATE: {current_date}"
-            )
+        # Add system prompt with date and filtered for disabled features
+        system_prompt = self._get_effective_system_prompt()
+        if system_prompt:
             messages.append({
                 "role": "system",
-                "content": system_prompt_with_date
+                "content": system_prompt
             })
         
         # Add user message directly (STATELESS - no history)
