@@ -644,12 +644,11 @@ class LMStudioConversationEntity(ConversationEntity):
             filtered_lines.append("PURE LLM MODE - COMPLETE SMART HOME CONTROL (ALL HA INTENTS)")
             filtered_lines.append("=" * 70)
             filtered_lines.append("")
-            filtered_lines.append("!!! CRITICAL RULES - MUST FOLLOW !!!")
-            filtered_lines.append("1. ALWAYS call control_device tool - NEVER claim success without it")
-            filtered_lines.append("2. Use entity_id from device list below - fastest & most accurate")
-            filtered_lines.append("3. MATCH THE EXACT ROOM NAME the user says! 'living room' != 'bedroom'")
-            filtered_lines.append("4. If user says 'living room shade' -> find entity with 'living_room' in the ID")
-            filtered_lines.append("5. Respond BRIEFLY after tool confirms success")
+            filtered_lines.append("RULES:")
+            filtered_lines.append("1. Match DEVICE TYPE: shades/blinds/curtains = cover.xxx, lights = light.xxx")
+            filtered_lines.append("2. Match ROOM NAME: 'living room' -> entity with 'living_room' in ID")
+            filtered_lines.append("3. Use entity_id from device list below")
+            filtered_lines.append("4. 'close the shades' = action='close', entity_id='cover.xxx' (NOT light!)")
             filtered_lines.append("")
             filtered_lines.append("-" * 50)
             filtered_lines.append("QUICK REFERENCE - CONTROL_DEVICE ACTIONS")
@@ -1309,13 +1308,13 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_device",
-                    "description": "Control ANY smart home device. MUST call this - NEVER claim success without it. Use entity_id from device list.",
+                    "description": "Control smart home devices. IMPORTANT: Match BOTH the device TYPE and room. 'close shades' = cover entity. 'turn off lights' = light entity. Use entity_id from device list.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "entity_id": {
                                 "type": "string",
-                                "description": "PREFERRED: Exact entity ID (e.g., 'light.kitchen', 'cover.blinds')"
+                                "description": "Exact entity ID. For shades/blinds use cover.xxx, for lights use light.xxx"
                             },
                             "entity_ids": {
                                 "type": "array",
