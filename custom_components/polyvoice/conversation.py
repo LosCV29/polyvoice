@@ -2420,7 +2420,20 @@ class LMStudioConversationEntity(ConversationEntity):
                             game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
                             # Convert to HA configured timezone
                             game_dt_local = game_dt.astimezone(dt_util.get_time_zone(self.hass.config.time_zone))
-                            formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
+                            now_local = datetime.now(dt_util.get_time_zone(self.hass.config.time_zone))
+
+                            # Check if game is today or tomorrow
+                            game_date_only = game_dt_local.date()
+                            today = now_local.date()
+                            tomorrow = today + timedelta(days=1)
+
+                            time_str = game_dt_local.strftime("%I:%M %p").lstrip("0")
+                            if game_date_only == today:
+                                formatted_date = f"Today at {time_str}"
+                            elif game_date_only == tomorrow:
+                                formatted_date = f"Tomorrow at {time_str}"
+                            else:
+                                formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
                         except (ValueError, KeyError, TypeError, AttributeError):
                             formatted_date = game_date_str[:10]
                     else:
