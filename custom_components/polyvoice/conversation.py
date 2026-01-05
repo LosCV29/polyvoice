@@ -1505,11 +1505,135 @@ class LMStudioConversationEntity(ConversationEntity):
                 continue
             
             if accumulated_content:
+                # Fallback: Check if LLM output tool call as text (common with some models)
+                parsed_result = await self._parse_text_tool_call(full_response, user_input)
+                if parsed_result:
+                    return parsed_result
                 return full_response
-            
+
             break
-        
+
+        # Final fallback check for text-based tool calls
+        if full_response:
+            parsed_result = await self._parse_text_tool_call(full_response, user_input)
+            if parsed_result:
+                return parsed_result
+
         return full_response if full_response else "I apologize, but I couldn't complete that request."
+
+    async def _parse_text_tool_call(self, text: str, user_input: conversation.ConversationInput) -> str | None:
+        """Parse text-based tool calls when LLM outputs tool calls as text instead of structured calls.
+
+        Some models (especially through vLLM) may output tool calls as text like:
+        - "tool_skip_next" or "tool underscore skip"
+        - "control_music(action='next')"
+        - "I'll call control_music with action=skip_next"
+
+        This fallback detects these patterns and executes the intended action.
+        """
+        if not text or not self.enable_music or not self.room_player_mapping:
+            return None
+
+        text_lower = text.lower()
+
+        # Patterns that indicate the LLM tried to call control_music as text
+        music_text_patterns = {
+            # Direct action mentions
+            "skip_next": "skip_next",
+            "skip next": "skip_next",
+            "tool_skip": "skip_next",
+            "tool skip": "skip_next",
+            "action.*next": "skip_next",
+            "action.*skip": "skip_next",
+            "skip_previous": "skip_previous",
+            "skip previous": "skip_previous",
+            "previous": "skip_previous",
+            "go back": "skip_previous",
+            "action.*previous": "skip_previous",
+            "action.*back": "skip_previous",
+            "pause": "pause",
+            "action.*pause": "pause",
+            "resume": "resume",
+            "unpause": "resume",
+            "action.*resume": "resume",
+            "mute": "mute",
+            "action.*mute": "mute",
+            "unmute": "unmute",
+            "action.*unmute": "unmute",
+        }
+
+        # Check if text looks like a broken tool call
+        looks_like_broken_tool_call = any([
+            "tool_" in text_lower,
+            "tool " in text_lower and ("skip" in text_lower or "next" in text_lower or "pause" in text_lower),
+            "control_music" in text_lower,
+            "action=" in text_lower or "action:" in text_lower,
+            text_lower.strip() in ["next", "skip", "previous", "back", "pause", "resume", "mute", "unmute"],
+        ])
+
+        if not looks_like_broken_tool_call:
+            return None
+
+        _LOGGER.info("Detected text-based tool call attempt: %s", text[:100])
+
+        # Determine the action
+        detected_action = None
+        for pattern, action in music_text_patterns.items():
+            if ".*" in pattern:
+                # Regex pattern
+                if re.search(pattern, text_lower):
+                    detected_action = action
+                    break
+            elif pattern in text_lower:
+                detected_action = action
+                break
+
+        # Also check for simple single-word responses
+        stripped = text_lower.strip().rstrip(".")
+        if stripped in ["next", "skip"]:
+            detected_action = "skip_next"
+        elif stripped in ["previous", "back", "prev"]:
+            detected_action = "skip_previous"
+        elif stripped == "pause":
+            detected_action = "pause"
+        elif stripped in ["resume", "play", "unpause"]:
+            detected_action = "resume"
+        elif stripped == "mute":
+            detected_action = "mute"
+        elif stripped == "unmute":
+            detected_action = "unmute"
+
+        if not detected_action:
+            _LOGGER.debug("Could not determine action from text: %s", text[:100])
+            return None
+
+        _LOGGER.info("Executing fallback music action: %s", detected_action)
+
+        # Execute the music control action
+        try:
+            result = await self._custom_tool_handler(
+                "control_music",
+                {"action": detected_action},
+                user_input.text
+            )
+
+            if "error" in result:
+                return result.get("error", "Music control failed")
+
+            # Return a natural confirmation
+            confirmations = {
+                "skip_next": "Skipped",
+                "skip_previous": "Previous track",
+                "pause": "Paused",
+                "resume": "Resumed",
+                "mute": "Muted",
+                "unmute": "Unmuted",
+            }
+            return confirmations.get(detected_action, "Done")
+
+        except Exception as err:
+            _LOGGER.error("Fallback music control failed: %s", err)
+            return None
 
     async def _execute_tool(
         self, tool_name: str, arguments: dict[str, Any], user_input: conversation.ConversationInput
