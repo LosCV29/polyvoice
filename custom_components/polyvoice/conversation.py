@@ -1075,28 +1075,60 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
 
-        # PRE-FILTER: Skip native HA entirely for music commands if music intents are excluded
-        # This prevents HA from executing the command before we can check exclusions
+        # PRE-FILTER: Skip native HA for commands matching excluded intents
+        # This prevents HA from executing commands before we can check exclusions
+        # (async_converse executes the intent, THEN returns - too late to exclude)
         text_lower = user_input.text.lower()
-        music_keywords = ["pause", "resume", "skip", "next", "previous", "stop", "mute", "unmute", "play"]
-        music_intents_excluded = any(intent in self.excluded_intents for intent in [
-            "HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
-            "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute"
-        ])
 
-        if music_intents_excluded:
-            # Check if this looks like a music command
-            has_music_keyword = any(kw in text_lower for kw in music_keywords)
-            has_music_context = any(ctx in text_lower for ctx in ["music", "song", "track", "audio", "speaker"])
+        # Map intents to keywords that would trigger them
+        INTENT_KEYWORD_MAP = {
+            # Media intents
+            "HassMediaPause": ["pause"],
+            "HassMediaUnpause": ["resume", "unpause", "continue"],
+            "HassMediaNext": ["next", "skip"],
+            "HassMediaPrevious": ["previous", "back", "last track"],
+            "HassMediaSearchAndPlay": ["play"],
+            "HassMediaPlayerMute": ["mute"],
+            "HassMediaPlayerUnmute": ["unmute"],
+            "HassSetVolume": ["volume", "set volume"],
+            "HassSetVolumeRelative": ["louder", "quieter", "turn up", "turn down"],
+            # Climate intents
+            "HassClimateSetTemperature": ["set temperature", "set thermostat", "degrees"],
+            "HassClimateGetTemperature": ["what's the temperature", "how warm", "how cold"],
+            # Cover intents
+            "HassOpenCover": ["open blind", "open shade", "open curtain", "raise blind"],
+            "HassCloseCover": ["close blind", "close shade", "close curtain", "lower blind"],
+            # Timer intents
+            "HassStartTimer": ["set timer", "start timer", "timer for"],
+            "HassCancelTimer": ["cancel timer", "stop timer", "delete timer"],
+            "HassCancelAllTimers": ["cancel all timer"],
+            "HassPauseTimer": ["pause timer"],
+            "HassUnpauseTimer": ["resume timer", "unpause timer"],
+            "HassIncreaseTimer": ["add time", "increase timer"],
+            "HassDecreaseTimer": ["reduce time", "decrease timer"],
+            "HassTimerStatus": ["timer status", "how much time"],
+            # State/toggle intents
+            "HassGetState": ["what is", "is the", "status of", "state of"],
+            "HassTurnOn": ["turn on", "switch on"],
+            "HassTurnOff": ["turn off", "switch off"],
+            "HassToggle": ["toggle"],
+            # Other intents
+            "HassNevermind": ["never mind", "nevermind", "forget it", "cancel"],
+            "HassGetCurrentTime": ["what time", "current time"],
+            "HassGetCurrentDate": ["what date", "what day", "today's date"],
+            "HassGetWeather": ["weather", "forecast"],
+            "HassLightSet": ["dim", "brighten", "set light", "light to"],
+            "HassFanSetSpeed": ["fan speed", "set fan"],
+            "HassVacuumStart": ["start vacuum", "vacuum the"],
+            "HassVacuumReturnToBase": ["dock vacuum", "return vacuum"],
+        }
 
-            if has_music_keyword and has_music_context:
-                _LOGGER.debug("Pre-filter: Music command detected with excluded intents, skipping native HA")
-                return None
-
-            # Also catch bare commands like "pause", "skip", "next"
-            stripped = text_lower.strip().rstrip(".")
-            if stripped in ["pause", "resume", "skip", "next", "previous", "stop", "mute", "unmute"]:
-                _LOGGER.debug("Pre-filter: Bare music command '%s' detected, skipping native HA", stripped)
+        # Check each excluded intent for matching keywords
+        for excluded_intent in self.excluded_intents:
+            keywords = INTENT_KEYWORD_MAP.get(excluded_intent, [])
+            if any(kw in text_lower for kw in keywords):
+                _LOGGER.debug("Pre-filter: '%s' matches excluded intent %s, skipping native HA",
+                             user_input.text[:30], excluded_intent)
                 return None
 
         try:
