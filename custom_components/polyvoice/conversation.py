@@ -1450,8 +1450,14 @@ class LMStudioConversationEntity(ConversationEntity):
                 # Ensure stream is closed to release connection back to pool
                 await stream.close()
             
+            # DEBUG: Log what we received from LLM
+            _LOGGER.info("=== LLM RESPONSE DEBUG ===")
+            _LOGGER.info("Text content received: %s", full_response[:500] if full_response else "(none)")
+            _LOGGER.info("Tool calls buffer: %s", tool_calls_buffer)
+            _LOGGER.info("=== END DEBUG ===")
+
             valid_tool_calls = [tc for tc in tool_calls_buffer if tc.get("id") and tc.get("function", {}).get("name")]
-            
+
             # Filter out duplicate tool calls (same function + same arguments)
             unique_tool_calls = []
             for tc in valid_tool_calls:
