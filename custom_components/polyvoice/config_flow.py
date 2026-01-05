@@ -47,7 +47,6 @@ from .const import (
     CONF_EXCLUDED_INTENTS,
     CONF_CUSTOM_EXCLUDED_INTENTS,
     CONF_ENABLE_ASSIST,
-    CONF_LLM_HASS_API,
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -88,7 +87,6 @@ from .const import (
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_CUSTOM_EXCLUDED_INTENTS,
     DEFAULT_ENABLE_ASSIST,
-    DEFAULT_LLM_HASS_API,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_LATITUDE,
     DEFAULT_CUSTOM_LONGITUDE,
@@ -1044,10 +1042,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="advanced",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_LLM_HASS_API,
-                        default=current.get(CONF_LLM_HASS_API, DEFAULT_LLM_HASS_API),
-                    ): str,
                     vol.Optional(
                         CONF_SYSTEM_PROMPT,
                         description={"suggested_value": current.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)},

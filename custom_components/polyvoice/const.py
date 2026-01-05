@@ -224,7 +224,6 @@ DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
 CONF_CUSTOM_EXCLUDED_INTENTS: Final = "custom_excluded_intents"
 CONF_ENABLE_ASSIST: Final = "enable_assist"
-CONF_LLM_HASS_API: Final = "llm_hass_api"
 
 DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassGetState",
@@ -235,7 +234,6 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
 ]
 DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
 DEFAULT_ENABLE_ASSIST: Final = True
-DEFAULT_LLM_HASS_API: Final = "assist"
 
 ALL_NATIVE_INTENTS: Final = [
     "HassClimateGetTemperature",

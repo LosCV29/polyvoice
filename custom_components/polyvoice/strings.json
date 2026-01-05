@@ -137,7 +137,6 @@
       "advanced": {
         "title": "Advanced Settings",
         "data": {
-          "llm_hass_api": "LLM Home Assistant API",
           "system_prompt": "System Prompt"
         }
       }
