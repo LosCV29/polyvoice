@@ -1556,6 +1556,8 @@ class LMStudioConversationEntity(ConversationEntity):
             "resume": "resume",
             "unpause": "resume",
             "action.*resume": "resume",
+            "stop": "stop",
+            "action.*stop": "stop",
             "mute": "mute",
             "action.*mute": "mute",
             "unmute": "unmute",
@@ -1565,10 +1567,10 @@ class LMStudioConversationEntity(ConversationEntity):
         # Check if text looks like a broken tool call
         looks_like_broken_tool_call = any([
             "tool_" in text_lower,
-            "tool " in text_lower and ("skip" in text_lower or "next" in text_lower or "pause" in text_lower),
+            "tool " in text_lower and ("skip" in text_lower or "next" in text_lower or "pause" in text_lower or "stop" in text_lower or "resume" in text_lower),
             "control_music" in text_lower,
             "action=" in text_lower or "action:" in text_lower,
-            text_lower.strip() in ["next", "skip", "previous", "back", "pause", "resume", "mute", "unmute"],
+            text_lower.strip() in ["next", "skip", "previous", "back", "pause", "resume", "stop", "mute", "unmute"],
         ])
 
         if not looks_like_broken_tool_call:
@@ -1598,6 +1600,8 @@ class LMStudioConversationEntity(ConversationEntity):
             detected_action = "pause"
         elif stripped in ["resume", "play", "unpause"]:
             detected_action = "resume"
+        elif stripped == "stop":
+            detected_action = "stop"
         elif stripped == "mute":
             detected_action = "mute"
         elif stripped == "unmute":
@@ -1626,6 +1630,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "skip_previous": "Previous track",
                 "pause": "Paused",
                 "resume": "Resumed",
+                "stop": "Stopped",
                 "mute": "Muted",
                 "unmute": "Unmuted",
             }
