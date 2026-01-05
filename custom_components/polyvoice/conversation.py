@@ -4262,12 +4262,12 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"status": "playing", "message": f"Playing {query} in the {room}"}
 
                 elif action == "pause":
-                    # Find the player that's currently PLAYING and pause it
-                    _LOGGER.info("Looking for player in 'playing' state...")
-                    playing = find_player_by_state("playing")
-                    if playing:
-                        await self.hass.services.async_call("media_player", "media_pause", {"entity_id": playing})
-                        return {"status": "paused", "message": f"Paused in {get_room_name(playing)}"}
+                    # Find any active player and pause it
+                    _LOGGER.info("Looking for active player to pause...")
+                    player = find_active_player()
+                    if player:
+                        await self.hass.services.async_call("media_player", "media_pause", {"entity_id": player})
+                        return {"status": "paused", "message": f"Paused in {get_room_name(player)}"}
                     return {"error": "No music is currently playing"}
 
                 elif action == "resume":
@@ -4289,54 +4289,54 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"message": "No music is playing"}
 
                 elif action == "skip_next":
-                    # Find the player that's PLAYING and skip
-                    _LOGGER.info("Looking for player in 'playing' state...")
-                    playing = find_player_by_state("playing")
-                    if playing:
-                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
+                    # Find active player and skip to next track
+                    _LOGGER.info("Looking for active player to skip...")
+                    player = find_active_player()
+                    if player:
+                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": player})
                         return {"status": "skipped", "message": "Skipped to next track"}
                     return {"error": "No music is playing to skip"}
 
                 elif action == "skip_previous":
-                    # Find the player that's PLAYING and go back
-                    _LOGGER.info("Looking for player in 'playing' state...")
-                    playing = find_player_by_state("playing")
-                    if playing:
-                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": playing})
+                    # Find active player and go to previous track
+                    _LOGGER.info("Looking for active player to go back...")
+                    player = find_active_player()
+                    if player:
+                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": player})
                         return {"status": "skipped", "message": "Previous track"}
                     return {"error": "No music is playing"}
 
                 elif action == "what_playing":
-                    # Find player that's playing
-                    _LOGGER.info("Looking for player in 'playing' state...")
-                    playing = find_player_by_state("playing")
-                    if playing:
-                        state = self.hass.states.get(playing)
+                    # Find any active player
+                    _LOGGER.info("Looking for active player...")
+                    player = find_active_player()
+                    if player:
+                        state = self.hass.states.get(player)
                         attrs = state.attributes
                         return {
                             "title": attrs.get("media_title", "Unknown"),
                             "artist": attrs.get("media_artist", "Unknown"),
                             "album": attrs.get("media_album_name", ""),
-                            "room": get_room_name(playing)
+                            "room": get_room_name(player)
                         }
                     return {"message": "No music currently playing"}
 
                 elif action == "transfer":
-                    # Find player that's playing and transfer to target room
-                    _LOGGER.info("Looking for player in 'playing' state...")
-                    playing = find_player_by_state("playing")
-                    if not playing:
+                    # Find active player and transfer to target room
+                    _LOGGER.info("Looking for active player to transfer...")
+                    source_player = find_active_player()
+                    if not source_player:
                         return {"error": "No music playing to transfer"}
                     if not target_players:
                         return {"error": f"No target room specified. Available: {', '.join(players.keys())}"}
 
                     target = target_players[0]
-                    _LOGGER.info("Transferring from %s to %s", playing, target)
+                    _LOGGER.info("Transferring from %s to %s", source_player, target)
 
                     # Transfer queue from source to target
                     await self.hass.services.async_call(
                         "music_assistant", "transfer_queue",
-                        {"source_player": playing, "auto_play": True},
+                        {"source_player": source_player, "auto_play": True},
                         target={"entity_id": target},
                         blocking=True
                     )
