@@ -966,7 +966,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "check_device_status",
-                    "description": "Check the current status of any device, sensor, door, lock, light, switch, or cover. IMPORTANT: Pass the COMPLETE device name exactly as the user said it - do not shorten or abbreviate. Examples: 'nursery door' not 'nursery', 'front door' not 'front', 'garage door' not 'garage'.",
+                    "description": "MANDATORY: You MUST call this for ANY 'is X open/closed/locked/on/off' question. NEVER guess - you do NOT know device states. Call this tool FIRST, then answer. Example: 'is the back door open' -> call check_device_status(device='back door')",
                     "parameters": {
                         "type": "object",
                         "properties": {
