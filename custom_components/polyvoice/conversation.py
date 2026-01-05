@@ -1564,13 +1564,19 @@ class LMStudioConversationEntity(ConversationEntity):
             "action.*unmute": "unmute",
         }
 
-        # Check if text looks like a broken tool call
+        # Check if text looks like a broken tool call OR contains music action keywords
+        music_keywords = ["mute", "unmute", "pause", "resume", "stop", "skip", "next", "previous", "back"]
+        has_music_keyword = any(kw in text_lower for kw in music_keywords)
+        has_music_context = "music" in text_lower or "song" in text_lower or "track" in text_lower or "playing" in text_lower
+
         looks_like_broken_tool_call = any([
             "tool_" in text_lower,
-            "tool " in text_lower and ("skip" in text_lower or "next" in text_lower or "pause" in text_lower or "stop" in text_lower or "resume" in text_lower),
+            "tool " in text_lower and has_music_keyword,
             "control_music" in text_lower,
             "action=" in text_lower or "action:" in text_lower,
             text_lower.strip() in ["next", "skip", "previous", "back", "pause", "resume", "stop", "mute", "unmute"],
+            # Catch phrases like "mute the music", "pause the song", etc.
+            has_music_keyword and has_music_context,
         ])
 
         if not looks_like_broken_tool_call:
