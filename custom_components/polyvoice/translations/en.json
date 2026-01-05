@@ -32,7 +32,7 @@
           "entities": "Entity Configuration",
           "api_keys": "External API Keys",
           "location": "Location Settings",
-          "intents": "Native Intents",
+          "intents": "Excluded Intents",
           "advanced": "Advanced Settings"
         }
       },
@@ -82,7 +82,6 @@
           "camera_entities": "Cameras",
           "room_player_mapping": "Room to Player Mapping (room: entity_id, one per line)",
           "last_active_speaker": "Last Active Speaker Helper (input_text)",
-          "notification_service": "Notification Service (e.g., mobile_app_your_phone)",
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
           "thermostat_temp_step": "Temperature Adjustment Step"
@@ -107,22 +106,15 @@
         }
       },
       "intents": {
-        "title": "Native Intent Settings",
-        "description": "ON = HA handles device commands (rigid matching). OFF = Pure LLM mode (fuzzy matching, natural language)",
+        "title": "Excluded Intents",
+        "description": "Select intents to skip HA native handling and use PolyVoice's LLM functions instead. Default excludes ensure thermostat, device status, and blinds use custom functions.",
         "data": {
-          "use_native_intents": "Use Native Intents (OFF = Pure LLM Mode)",
-          "enable_assist": "Enable Assist Control",
-          "excluded_intents": "Excluded Intents",
-          "custom_excluded_intents": "Additional Excluded Intents (comma-separated)"
-        },
-        "data_description": {
-          "use_native_intents": "When ON, Home Assistant's built-in intent system handles device commands. When OFF, the LLM handles ALL commands with fuzzy device matching - say 'make it dark' and it understands to turn off lights!"
+          "excluded_intents": "Excluded Intents"
         }
       },
       "advanced": {
         "title": "Advanced Settings",
         "data": {
-          "llm_hass_api": "LLM Home Assistant API",
           "system_prompt": "System Prompt"
         }
       }

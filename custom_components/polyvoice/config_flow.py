@@ -44,11 +44,7 @@ from .const import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
     # Native intents
-    CONF_USE_NATIVE_INTENTS,
     CONF_EXCLUDED_INTENTS,
-    CONF_CUSTOM_EXCLUDED_INTENTS,
-    CONF_ENABLE_ASSIST,
-    CONF_LLM_HASS_API,
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -75,7 +71,6 @@ from .const import (
     CONF_ROOM_PLAYER_MAPPING,
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
-    CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
@@ -86,11 +81,7 @@ from .const import (
     CONF_THERMOSTAT_TEMP_STEP,
     CONF_THERMOSTAT_USE_CELSIUS,
     # Defaults
-    DEFAULT_USE_NATIVE_INTENTS,
     DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_CUSTOM_EXCLUDED_INTENTS,
-    DEFAULT_ENABLE_ASSIST,
-    DEFAULT_LLM_HASS_API,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_LATITUDE,
     DEFAULT_CUSTOM_LONGITUDE,
@@ -115,7 +106,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
-    DEFAULT_NOTIFICATION_SERVICE,
     DEFAULT_CAMERA_ENTITIES,
     DEFAULT_BLINDS_ENTITIES,
     DEFAULT_BLINDS_FAVORITE_BUTTONS,
@@ -668,10 +658,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_LAST_ACTIVE_SPEAKER in user_input:
                 processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
 
-            # Handle notification service
-            if CONF_NOTIFICATION_SERVICE in user_input:
-                processed_input[CONF_NOTIFICATION_SERVICE] = user_input[CONF_NOTIFICATION_SERVICE]
-
             # Handle room to player mapping
             if CONF_ROOM_PLAYER_MAPPING in user_input:
                 processed_input[CONF_ROOM_PLAYER_MAPPING] = user_input[CONF_ROOM_PLAYER_MAPPING]
@@ -685,14 +671,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 processed_input[CONF_THERMOSTAT_TEMP_STEP] = user_input[CONF_THERMOSTAT_TEMP_STEP]
             if CONF_THERMOSTAT_USE_CELSIUS in user_input:
                 processed_input[CONF_THERMOSTAT_USE_CELSIUS] = user_input[CONF_THERMOSTAT_USE_CELSIUS]
-
-            # Handle excluded intents
-            if CONF_EXCLUDED_INTENTS in user_input:
-                processed_input[CONF_EXCLUDED_INTENTS] = user_input[CONF_EXCLUDED_INTENTS]
-
-            # Handle custom excluded intents
-            if CONF_CUSTOM_EXCLUDED_INTENTS in user_input:
-                processed_input[CONF_CUSTOM_EXCLUDED_INTENTS] = user_input[CONF_CUSTOM_EXCLUDED_INTENTS]
 
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
@@ -806,14 +784,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(
                             domain="input_text",
                             multiple=False,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_NOTIFICATION_SERVICE,
-                        default=current.get(CONF_NOTIFICATION_SERVICE, DEFAULT_NOTIFICATION_SERVICE),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
                         )
                     ),
                     vol.Optional(
@@ -999,7 +969,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_intents(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle native intents configuration."""
+        """Handle excluded intents configuration."""
         if user_input is not None:
             new_options = {**self._entry.options, **user_input}
             return self.async_create_entry(title="", data=new_options)
@@ -1011,14 +981,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_USE_NATIVE_INTENTS,
-                        default=current.get(CONF_USE_NATIVE_INTENTS, DEFAULT_USE_NATIVE_INTENTS),
-                    ): cv.boolean,
-                    vol.Optional(
-                        CONF_ENABLE_ASSIST,
-                        default=current.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST),
-                    ): cv.boolean,
-                    vol.Optional(
                         CONF_EXCLUDED_INTENTS,
                         default=current.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS),
                     ): selector.SelectSelector(
@@ -1028,10 +990,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Optional(
-                        CONF_CUSTOM_EXCLUDED_INTENTS,
-                        default=current.get(CONF_CUSTOM_EXCLUDED_INTENTS, DEFAULT_CUSTOM_EXCLUDED_INTENTS),
-                    ): str,
                 }
             ),
         )
@@ -1050,10 +1008,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="advanced",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_LLM_HASS_API,
-                        default=current.get(CONF_LLM_HASS_API, DEFAULT_LLM_HASS_API),
-                    ): str,
                     vol.Optional(
                         CONF_SYSTEM_PROMPT,
                         description={"suggested_value": current.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)},

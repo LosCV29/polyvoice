@@ -139,7 +139,6 @@ CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
 CONF_ROOM_PLAYER_MAPPING: Final = "room_player_mapping"
 CONF_LAST_ACTIVE_SPEAKER: Final = "last_active_speaker"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
-CONF_NOTIFICATION_SERVICE: Final = "notification_service"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
 CONF_BLINDS_ENTITIES: Final = "blinds_entities"
 CONF_BLINDS_FAVORITE_BUTTONS: Final = "blinds_favorite_buttons"
@@ -202,7 +201,6 @@ DEFAULT_CALENDAR_ENTITIES: Final = ""
 DEFAULT_ROOM_PLAYER_MAPPING: Final = ""  # room:entity_id, one per line
 DEFAULT_LAST_ACTIVE_SPEAKER: Final = ""  # input_text helper entity_id
 DEFAULT_DEVICE_ALIASES: Final = ""
-DEFAULT_NOTIFICATION_SERVICE: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
 DEFAULT_BLINDS_ENTITIES: Final = ""
 DEFAULT_BLINDS_FAVORITE_BUTTONS: Final = ""
@@ -219,60 +217,65 @@ DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS: Final = 30
 DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 
 # =============================================================================
-# NATIVE INTENTS
+# NATIVE INTENTS (with LLM fallback)
 # =============================================================================
-CONF_USE_NATIVE_INTENTS: Final = "use_native_intents"
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
-CONF_CUSTOM_EXCLUDED_INTENTS: Final = "custom_excluded_intents"
-CONF_ENABLE_ASSIST: Final = "enable_assist"
-CONF_LLM_HASS_API: Final = "llm_hass_api"
 
-DEFAULT_USE_NATIVE_INTENTS: Final = True
 DEFAULT_EXCLUDED_INTENTS: Final = [
-    "HassGetState",
-    "HassNevermind",
-    "HassClimateGetTemperature",
-    "HassClimateSetTemperature",
-    "HassTimerStatus",
+    "HassGetState",           # Use check_device_status for richer responses
+    "HassNevermind",          # Let LLM handle conversationally
+    "HassClimateGetTemperature",  # Use control_thermostat
+    "HassClimateSetTemperature",  # Use control_thermostat
+    "HassTimerStatus",        # Let LLM handle
+    "HassSetPosition",        # Use control_device for blinds/covers
 ]
-DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
-DEFAULT_ENABLE_ASSIST: Final = True
-DEFAULT_LLM_HASS_API: Final = "assist"
 
+# Complete list of Home Assistant native intents (alphabetically sorted)
 ALL_NATIVE_INTENTS: Final = [
+    "HassBroadcast",
+    "HassCancelAllTimers",
+    "HassCancelTimer",
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
+    "HassCloseCover",
+    "HassDecreaseTimer",
+    "HassFanSetSpeed",
+    "HassGetCurrentDate",
+    "HassGetCurrentTime",
     "HassGetState",
+    "HassGetWeather",
+    "HassHumidifierMode",
+    "HassHumidifierSetpoint",
+    "HassIncreaseTimer",
+    "HassLawnMowerDock",
+    "HassLawnMowerStartMowing",
     "HassLightSet",
+    "HassListAddItem",
+    "HassListCompleteItem",
     "HassMediaNext",
     "HassMediaPause",
+    "HassMediaPlayerMute",
+    "HassMediaPlayerUnmute",
     "HassMediaPrevious",
+    "HassMediaSearchAndPlay",
     "HassMediaUnpause",
     "HassNevermind",
+    "HassOpenCover",
+    "HassPauseTimer",
+    "HassRespond",
     "HassSetPosition",
     "HassSetVolume",
-    "HassTimerCancel",
-    "HassTimerStart",
+    "HassSetVolumeRelative",
+    "HassShoppingListAddItem",
+    "HassShoppingListCompleteItem",
+    "HassStartTimer",
     "HassTimerStatus",
     "HassToggle",
     "HassTurnOff",
     "HassTurnOn",
+    "HassUnpauseTimer",
     "HassVacuumReturnToBase",
     "HassVacuumStart",
-]
-
-# =============================================================================
-# BLINDS/SHADES DETECTION KEYWORDS
-# =============================================================================
-# Keywords that indicate a blinds/shades command - bypass native intents
-BLINDS_KEYWORDS: Final = [
-    "blind", "blinds", "shade", "shades", "curtain", "curtains",
-    "drape", "drapes", "roller", "window cover", "window shade",
-]
-
-BLINDS_ACTION_KEYWORDS: Final = [
-    "raise", "lower", "open", "close", "stop", "halt",
-    "halfway", "half", "favorite", "my position", "preset",
 ]
 
 # =============================================================================

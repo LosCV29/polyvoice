@@ -49,12 +49,8 @@ from .const import (
     DEFAULT_PROVIDER,
     DEFAULT_API_KEY,
     # Native intents
-    CONF_USE_NATIVE_INTENTS,
     CONF_EXCLUDED_INTENTS,
-    CONF_CUSTOM_EXCLUDED_INTENTS,
     CONF_SYSTEM_PROMPT,
-    CONF_ENABLE_ASSIST,
-    CONF_LLM_HASS_API,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
     # External API keys
@@ -81,21 +77,15 @@ from .const import (
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_CALENDAR_ENTITIES,
     CONF_DEVICE_ALIASES,
-    CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
     CONF_ENABLE_BLINDS,
     DEFAULT_ENABLE_BLINDS,
     DEFAULT_BLINDS_ENTITIES,
-    BLINDS_KEYWORDS,
-    BLINDS_ACTION_KEYWORDS,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_CUSTOM_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
-    DEFAULT_ENABLE_ASSIST,
-    DEFAULT_LLM_HASS_API,
     DEFAULT_ENABLE_WEATHER,
     DEFAULT_ENABLE_CALENDAR,
     DEFAULT_ENABLE_CAMERAS,
@@ -111,7 +101,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     CAMERA_FRIENDLY_NAMES,
-    ALL_NATIVE_INTENTS,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
@@ -131,11 +120,6 @@ _LOGGER = logging.getLogger(__name__)
 # =============================================================================
 # CONFIGURATION CONSTANTS - Now loaded from config, with fallback defaults
 # =============================================================================
-
-# Default location (used when custom location not set and HA location unavailable)
-DEFAULT_LATITUDE = 0.0
-DEFAULT_LONGITUDE = 0.0
-
 
 # SPEED OPTIMIZATION PATTERNS
 SIMPLE_QUERY_PATTERNS = [
@@ -221,56 +205,6 @@ def calculate_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float)
     c = 2 * asin(sqrt(a))
     
     return 3956 * c  # Earth's radius in miles
-
-
-async def fetch_wikidata_birthdate(session: aiohttp.ClientSession, wikibase_item: str) -> dict | None:
-    """
-    Fetch birthdate from Wikidata for a given Wikibase item ID.
-    Returns dict with 'birthdate' and 'age' or None if not found.
-    """
-    try:
-        headers = {"User-Agent": "HomeAssistant-PolyVoice/1.0"}
-        wikidata_url = f"https://www.wikidata.org/wiki/Special:EntityData/{wikibase_item}.json"
-
-        async with session.get(wikidata_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                return None
-            wd_data = await resp.json()
-
-        entity = wd_data.get("entities", {}).get(wikibase_item, {})
-        claims = entity.get("claims", {})
-
-        # P569 is birth date property in Wikidata
-        if "P569" not in claims:
-            return None
-
-        birth_claim = claims["P569"][0]
-        time_value = birth_claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("time", "")
-
-        if not time_value:
-            return None
-
-        # Parse Wikidata date format: +YYYY-MM-DDTHH:MM:SSZ
-        match = re.match(r'\+(\d{4})-(\d{2})-(\d{2})', time_value)
-        if not match:
-            return None
-
-        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
-        birthdate = datetime(year, month, day)
-
-        today = datetime.now()
-        age = today.year - birthdate.year
-        if (today.month, today.day) < (birthdate.month, birthdate.day):
-            age -= 1
-
-        return {
-            "birthdate": birthdate,
-            "birthdate_formatted": birthdate.strftime("%B %d, %Y"),
-            "age": age,
-        }
-    except Exception as e:
-        _LOGGER.warning("Wikidata fetch error: %s", e)
-        return None
 
 
 def find_entity_by_name(hass: HomeAssistant, query: str, device_aliases: dict) -> tuple[str | None, str | None]:
@@ -409,32 +343,12 @@ class LMStudioConversationEntity(ConversationEntity):
             # For Anthropic and Google, we'll use aiohttp directly
             self.client = None
 
-        self.use_native_intents = config.get(CONF_USE_NATIVE_INTENTS, True)
-        
-        self.enable_assist = config.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST)
-        if self.enable_assist:
-            self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
-        else:
-            self._attr_supported_features = 0
-        
-        llm_api_config = config.get(CONF_LLM_HASS_API, [DEFAULT_LLM_HASS_API])
-        if isinstance(llm_api_config, str):
-            self.llm_api_ids = [api.strip() for api in llm_api_config.split(",") if api.strip()]
-        elif isinstance(llm_api_config, list):
-            self.llm_api_ids = llm_api_config
-        else:
-            self.llm_api_ids = [DEFAULT_LLM_HASS_API]
-        
-        # ALWAYS use default excluded intents (hardcoded) - UI can only ADD more, not remove
-        self.excluded_intents = set(DEFAULT_EXCLUDED_INTENTS)
+        # Always enable conversation control features
+        self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
 
-        # Add any custom excluded intents from UI config
-        custom_excluded = config.get(CONF_CUSTOM_EXCLUDED_INTENTS, DEFAULT_CUSTOM_EXCLUDED_INTENTS)
-        if custom_excluded:
-            custom_list = [i.strip() for i in custom_excluded.split(",") if i.strip()]
-            self.excluded_intents.update(custom_list)
-
-        _LOGGER.warning("=== EXCLUDED INTENTS (hardcoded + custom) === %s", self.excluded_intents)
+        # Excluded intents - from UI dropdown (defaults to DEFAULT_EXCLUDED_INTENTS)
+        self.excluded_intents = set(config.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS))
+        _LOGGER.debug("Excluded intents configured: %s", self.excluded_intents)
 
         self.system_prompt = config.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
         
@@ -478,7 +392,7 @@ class LMStudioConversationEntity(ConversationEntity):
         raw_mapping = config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING)
         self.room_player_mapping = parse_entity_config(raw_mapping)
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER)
-        _LOGGER.info("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
+        _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
         # Entity configuration from UI
@@ -490,11 +404,10 @@ class LMStudioConversationEntity(ConversationEntity):
         self.enable_blinds = config.get(CONF_ENABLE_BLINDS, DEFAULT_ENABLE_BLINDS)
         self.blinds_entities = parse_list_config(config.get(CONF_BLINDS_ENTITIES, DEFAULT_BLINDS_ENTITIES))
         self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
-        _LOGGER.info("Blinds config: enabled=%s, entities=%s, buttons=%s",
+        _LOGGER.debug("Blinds config: enabled=%s, entities=%s, buttons=%s",
                      self.enable_blinds, self.blinds_entities, self.blinds_favorite_buttons)
 
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
-        self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
         # Thermostat settings (user-configurable limits and step)
         # First determine unit preference to select appropriate defaults
@@ -552,10 +465,10 @@ class LMStudioConversationEntity(ConversationEntity):
         self._tools = self._build_tools()
         
         _LOGGER.info(
-            "Config updated - Provider: %s, Model: %s, Assist: %s, Tools: %d",
-            self.provider, self.model, self.enable_assist, len(self._tools)
+            "Config updated - Provider: %s, Model: %s, Tools: %d",
+            self.provider, self.model, len(self._tools)
         )
-        _LOGGER.info("Excluded intents: %s", self.excluded_intents)
+        _LOGGER.debug("Excluded intents: %s", self.excluded_intents)
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
@@ -646,104 +559,7 @@ class LMStudioConversationEntity(ConversationEntity):
             if not self.enable_calendar and 'get_calendar_events' in line_lower:
                 continue
 
-            # Skip "let native HA handle" instructions when in pure LLM mode
-            if not self.use_native_intents and 'native' in line_lower and 'handle' in line_lower:
-                continue
-
             filtered_lines.append(line)
-
-        # Add LLM device control instructions and FULL device list when native intents are disabled
-        if not self.use_native_intents:
-            filtered_lines.append("")
-            filtered_lines.append("=" * 70)
-            filtered_lines.append("PURE LLM MODE - YOU CONTROL ALL SMART HOME DEVICES")
-            filtered_lines.append("=" * 70)
-            filtered_lines.append("")
-            filtered_lines.append("CRITICAL: NEVER say 'I can't do that'. ALWAYS call control_device!")
-            filtered_lines.append("")
-            filtered_lines.append("*** ENTITY ID WARNING ***")
-            filtered_lines.append("Numbers in entity_id often DO NOT MATCH numbers in friendly name!")
-            filtered_lines.append("Example: cover.blind_2 could be 'Shade 1', light.lamp_3 could be 'Lamp 1'")
-            filtered_lines.append("ALWAYS look up the EXACT entity_id from the DEVICE LIST below.")
-            filtered_lines.append("NEVER guess entity_ids - find the friendly name, use its entity_id!")
-            filtered_lines.append("")
-            filtered_lines.append("HOW TO MATCH DEVICES:")
-            filtered_lines.append("1. User says a device name -> find matching friendly name in device list")
-            filtered_lines.append("2. Use the entity_id shown BEFORE the = sign")
-            filtered_lines.append("3. 'shade/blind/curtain' = cover.xxx entities")
-            filtered_lines.append("4. 'light/lamp' = light.xxx entities")
-            filtered_lines.append("5. Check (aka: ...) aliases for alternate names")
-            filtered_lines.append("")
-            filtered_lines.append("SHADE/BLIND COMMANDS:")
-            filtered_lines.append("  open/raise/up -> action='open'")
-            filtered_lines.append("  close/lower/down -> action='close'")
-            filtered_lines.append("  stop/halt -> action='stop'")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("CONTROL_DEVICE ACTIONS BY TYPE")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("")
-            filtered_lines.append("LIGHTS:")
-            filtered_lines.append("  turn_on, turn_off, toggle")
-            filtered_lines.append("  brightness=0-100 (with turn_on)")
-            filtered_lines.append("  color='red'/'blue'/etc OR color_temp=2700-6500 (Kelvin)")
-            filtered_lines.append("")
-            filtered_lines.append("SWITCHES/FANS/OUTLETS:")
-            filtered_lines.append("  turn_on, turn_off, toggle")
-            filtered_lines.append("  fan_speed='low'/'medium'/'high' (fans only)")
-            filtered_lines.append("")
-            filtered_lines.append("COVERS (blinds/shades/garage):")
-            filtered_lines.append("  open, close, stop, toggle")
-            filtered_lines.append("  position=0-100 (0=closed, 100=open)")
-            filtered_lines.append("  preset/favorite (go to saved position)")
-            filtered_lines.append("")
-            filtered_lines.append("LOCKS:")
-            filtered_lines.append("  lock, unlock")
-            filtered_lines.append("")
-            filtered_lines.append("MEDIA PLAYERS:")
-            filtered_lines.append("  play, pause, stop, next, previous")
-            filtered_lines.append("  volume=0-100, mute, unmute")
-            filtered_lines.append("  media_content='song/station name', media_type='music'/'playlist'")
-            filtered_lines.append("")
-            filtered_lines.append("CLIMATE/THERMOSTATS:")
-            filtered_lines.append("  set_temperature, temperature=XX (degrees)")
-            filtered_lines.append("  hvac_mode='heat'/'cool'/'auto'/'off'")
-            filtered_lines.append("")
-            filtered_lines.append("VACUUMS:")
-            filtered_lines.append("  start, stop, dock, locate, return_home")
-            filtered_lines.append("")
-            filtered_lines.append("SCENES/SCRIPTS:")
-            filtered_lines.append("  activate (or turn_on)")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("NATURAL LANGUAGE PATTERNS -> TOOL CALLS")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("")
-            filtered_lines.append("'Turn on/off [device]' -> action='turn_on'/'turn_off', entity_id='...'")
-            filtered_lines.append("'Dim [light] to 50%' -> action='turn_on', brightness=50, entity_id='...'")
-            filtered_lines.append("'Make it warmer/cooler' -> action='set_temperature', temperature=+/-2 from current")
-            filtered_lines.append("'Set temp to 72' -> action='set_temperature', temperature=72")
-            filtered_lines.append("'Lock/unlock [door]' -> action='lock'/'unlock', entity_id='...'")
-            filtered_lines.append("'Open/close [cover]' -> action='open'/'close', entity_id='...'")
-            filtered_lines.append("'Set shades to 50%' -> action='set_position', position=50, entity_id='...'")
-            filtered_lines.append("'Favorite position' -> action='preset', entity_id='...'")
-            filtered_lines.append("'Pause the music' -> action='pause', entity_id='media_player.xxx'")
-            filtered_lines.append("'Volume up/down' -> action='volume_up'/'volume_down'")
-            filtered_lines.append("'Set volume to 50' -> action='set_volume', volume=50")
-            filtered_lines.append("'Start the vacuum' -> action='start', entity_id='vacuum.xxx'")
-            filtered_lines.append("'Send vacuum home' -> action='dock'")
-            filtered_lines.append("'Turn off everything' -> area='...', domain='all', action='turn_off'")
-            filtered_lines.append("'All lights off in kitchen' -> area='Kitchen', domain='light', action='turn_off'")
-            filtered_lines.append("'Activate movie mode' -> action='activate', entity_id='scene.movie_mode'")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("YOUR COMPLETE DEVICE LIST")
-            filtered_lines.append("-" * 50)
-
-            # Inject the FULL device list
-            device_list = self._discover_all_devices()
-            filtered_lines.append(device_list)
-            filtered_lines.append("")
 
         return '\n'.join(filtered_lines)
 
@@ -797,258 +613,6 @@ class LMStudioConversationEntity(ConversationEntity):
         self._tokens_used["output"] += output_tokens
         self._update_usage_sensors()
 
-    def _discover_all_devices(self) -> str:
-        """Discover ALL controllable devices from Home Assistant.
-
-        Returns a comprehensive, structured list of all devices organized by domain,
-        including entity IDs, friendly names, areas, and current states.
-        This enables the LLM to have complete knowledge of the smart home.
-        """
-        # Controllable domains we care about
-        controllable_domains = {
-            "light": "Lights",
-            "switch": "Switches",
-            "fan": "Fans",
-            "lock": "Locks",
-            "cover": "Covers (Garage Doors, Blinds, etc.)",
-            "climate": "Thermostats/HVAC",
-            "media_player": "Media Players",
-            "vacuum": "Vacuums",
-            "scene": "Scenes",
-            "script": "Scripts",
-            "automation": "Automations",
-            "input_boolean": "Input Booleans (Virtual Switches)",
-            "button": "Buttons",
-            "siren": "Sirens/Alarms",
-            "humidifier": "Humidifiers",
-        }
-
-        # Status-only domains (can check but not control via control_device)
-        status_domains = {
-            "binary_sensor": "Binary Sensors",
-            "sensor": "Sensors",
-            "person": "People/Presence",
-            "device_tracker": "Device Trackers",
-            "weather": "Weather",
-            "sun": "Sun",
-            "zone": "Zones",
-        }
-
-        # Get registries
-        ent_reg = er.async_get(self.hass)
-        area_reg = ar.async_get(self.hass)
-        dev_reg = dr.async_get(self.hass)
-
-        # Build area lookup
-        area_names = {area.id: area.name for area in area_reg.async_list_areas()}
-
-        # Build device to area lookup
-        device_areas = {}
-        for device in dev_reg.devices.values():
-            if device.area_id:
-                device_areas[device.id] = area_names.get(device.area_id, "Unknown Area")
-
-        # Organize entities by domain and area
-        devices_by_domain = {}
-
-        for state in self.hass.states.async_all():
-            entity_id = state.entity_id
-            domain = entity_id.split(".")[0]
-
-            # Skip unavailable/unknown entities
-            if state.state in ("unavailable", "unknown"):
-                continue
-
-            # Get entity registry entry for more info
-            entity_entry = ent_reg.async_get(entity_id)
-
-            # Skip hidden or disabled entities
-            if entity_entry:
-                if entity_entry.hidden_by or entity_entry.disabled_by:
-                    continue
-
-            # Get friendly name
-            friendly_name = state.attributes.get("friendly_name", entity_id.split(".")[-1])
-
-            # Get area (from entity or device)
-            area = None
-            if entity_entry:
-                if entity_entry.area_id:
-                    area = area_names.get(entity_entry.area_id)
-                elif entity_entry.device_id:
-                    area = device_areas.get(entity_entry.device_id)
-
-            # Get current state in human-readable form
-            current_state = state.state
-            if domain == "light":
-                brightness = state.attributes.get("brightness")
-                if current_state == "on" and brightness:
-                    pct = round(brightness / 255 * 100)
-                    current_state = f"on ({pct}%)"
-            elif domain == "cover":
-                position = state.attributes.get("current_position")
-                if position is not None:
-                    current_state = f"{current_state} ({position}%)"
-            elif domain == "climate":
-                temp = state.attributes.get("temperature")
-                current_temp = state.attributes.get("current_temperature")
-                if temp:
-                    current_state = f"{current_state}, set to {temp}°"
-                if current_temp:
-                    current_state += f", currently {current_temp}°"
-            elif domain == "media_player":
-                media_title = state.attributes.get("media_title")
-                if media_title and current_state == "playing":
-                    current_state = f"playing: {media_title[:30]}"
-            elif domain == "lock":
-                current_state = "LOCKED" if current_state == "locked" else "UNLOCKED"
-            elif domain in ("binary_sensor", "input_boolean"):
-                if "door" in entity_id or "window" in entity_id or "gate" in entity_id:
-                    current_state = "OPEN" if current_state == "on" else "CLOSED"
-                elif "motion" in entity_id or "occupancy" in entity_id:
-                    current_state = "DETECTED" if current_state == "on" else "clear"
-                elif "lock" in entity_id:
-                    current_state = "LOCKED" if current_state == "on" else "UNLOCKED"
-
-            # Check if it's controllable or status-only
-            if domain in controllable_domains:
-                domain_label = controllable_domains[domain]
-                is_controllable = True
-            elif domain in status_domains:
-                domain_label = status_domains[domain]
-                is_controllable = False
-            else:
-                continue  # Skip other domains
-
-            # Add to organized dict
-            if domain_label not in devices_by_domain:
-                devices_by_domain[domain_label] = {"controllable": is_controllable, "entities": []}
-
-            # Collect aliases from BOTH sources:
-            # 1. HA entity registry aliases (built-in HA feature)
-            # 2. Custom device_aliases config
-            aliases = []
-
-            # Get HA entity registry aliases FIRST (this is what user has set up!)
-            if entity_entry and entity_entry.aliases:
-                aliases.extend(list(entity_entry.aliases))
-
-            # Also check custom device_aliases config
-            for alias, alias_entity_id in self.device_aliases.items():
-                if alias_entity_id == entity_id and alias not in aliases:
-                    aliases.append(alias)
-
-            entity_info = {
-                "entity_id": entity_id,
-                "name": friendly_name,
-                "area": area,
-                "state": current_state,
-                "aliases": aliases,
-            }
-            devices_by_domain[domain_label]["entities"].append(entity_info)
-
-        # Build the comprehensive device list string
-        lines = []
-        lines.append("=" * 60)
-        lines.append("COMPLETE SMART HOME DEVICE LIST")
-        lines.append("=" * 60)
-        lines.append("")
-
-        # First, controllable devices
-        lines.append(">>> CONTROLLABLE DEVICES (you can turn on/off, lock/unlock, open/close):")
-        lines.append("")
-
-        for domain_label, data in sorted(devices_by_domain.items()):
-            if not data["controllable"]:
-                continue
-            entities = data["entities"]
-            if not entities:
-                continue
-
-            lines.append(f"### {domain_label} ({len(entities)} devices) ###")
-
-            # Group by area
-            by_area = {}
-            no_area = []
-            for e in entities:
-                if e["area"]:
-                    if e["area"] not in by_area:
-                        by_area[e["area"]] = []
-                    by_area[e["area"]].append(e)
-                else:
-                    no_area.append(e)
-
-            # Print by area - entity_id FIRST for easy copy
-            for area_name in sorted(by_area.keys()):
-                lines.append(f"  [{area_name}]")
-                for e in sorted(by_area[area_name], key=lambda x: x["name"]):
-                    # Format: entity_id = "Friendly Name" [state] (aka: alias1, alias2)
-                    # This makes it clear which entity_id to use AND shows aliases
-                    line = f"    {e['entity_id']} = \"{e['name']}\" [{e['state']}]"
-                    if e.get("aliases"):
-                        line += f" (aka: {', '.join(e['aliases'])})"
-                    lines.append(line)
-
-            # Print entities without area
-            if no_area:
-                lines.append("  [No Area Assigned]")
-                for e in sorted(no_area, key=lambda x: x["name"]):
-                    line = f"    {e['entity_id']} = \"{e['name']}\" [{e['state']}]"
-                    if e.get("aliases"):
-                        line += f" (aka: {', '.join(e['aliases'])})"
-                    lines.append(line)
-
-            lines.append("")
-
-        # Then, status-only devices
-        lines.append(">>> STATUS-ONLY DEVICES (you can check status but not control):")
-        lines.append("")
-
-        for domain_label, data in sorted(devices_by_domain.items()):
-            if data["controllable"]:
-                continue
-            entities = data["entities"]
-            if not entities:
-                continue
-
-            # Limit sensors to avoid overwhelming (show first 50)
-            if len(entities) > 50:
-                lines.append(f"### {domain_label} ({len(entities)} total, showing first 50) ###")
-                entities = entities[:50]
-            else:
-                lines.append(f"### {domain_label} ({len(entities)} devices) ###")
-
-            # Group by area
-            by_area = {}
-            no_area = []
-            for e in entities:
-                if e["area"]:
-                    if e["area"] not in by_area:
-                        by_area[e["area"]] = []
-                    by_area[e["area"]].append(e)
-                else:
-                    no_area.append(e)
-
-            # Print by area
-            for area_name in sorted(by_area.keys()):
-                lines.append(f"  [{area_name}]")
-                for e in sorted(by_area[area_name], key=lambda x: x["name"]):
-                    lines.append(f"    - {e['name']}: {e['entity_id']} [{e['state']}]")
-
-            # Print entities without area
-            if no_area:
-                lines.append("  [No Area Assigned]")
-                for e in sorted(no_area, key=lambda x: x["name"]):
-                    lines.append(f"    - {e['name']}: {e['entity_id']} [{e['state']}]")
-
-            lines.append("")
-
-        lines.append("=" * 60)
-        lines.append("END OF DEVICE LIST")
-        lines.append("=" * 60)
-
-        return "\n".join(lines)
-
     def _build_tools(self) -> list[dict]:
         """Build the tools list based on enabled features."""
         tools = []
@@ -1069,11 +633,11 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "get_weather_forecast",
-                    "description": "Get current weather AND forecast. ALWAYS call this for weather questions: 'what's the weather', 'will it rain', 'temperature', 'forecast'.",
+                    "description": "Get current weather AND forecast for any city worldwide. Use for: 'what's the weather', 'will it rain', 'temperature', 'forecast'. Pass location ONLY if user specifies a place. Omit 'location' param entirely to use home location.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "location": {"type": "string", "description": "City name (optional, defaults to configured location)"},
+                            "location": {"type": "string", "description": "City with state/country (e.g., 'Paris, France', 'Tokyo, Japan', 'Miami, Florida', 'Austin, Texas'). ONLY include if user specifies a location."},
                             "forecast_type": {"type": "string", "enum": ["current", "weekly", "both"], "description": "Type: 'current' for now, 'weekly' for 5-day, 'both' for all (default: both)"}
                         }
                     }
@@ -1314,10 +878,10 @@ class LMStudioConversationEntity(ConversationEntity):
             })
 
         # ===== MUSIC CONTROL (if enabled and room mapping configured) =====
-        _LOGGER.info("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
+        _LOGGER.debug("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
         if self.enable_music and self.room_player_mapping:
             rooms_list = ", ".join(self.room_player_mapping.keys())
-            _LOGGER.info("MUSIC TOOL ENABLED with rooms: %s", rooms_list)
+            _LOGGER.debug("Music tool enabled with rooms: %s", rooms_list)
             tools.append({
                 "type": "function",
                 "function": {
@@ -1345,82 +909,81 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
 
-        # ===== DEVICE CONTROL (Pure LLM Mode - when native intents disabled) =====
-        if not self.use_native_intents:
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "control_device",
-                    "description": "Control ANY smart home device including BLINDS, SHADES, CURTAINS, lights, switches, locks, fans. ALWAYS use this for blinds/shades/curtains - actions: open, close, stop, set_position. 'raise/lower the shade' = open/close cover. 'stop the blind' = stop cover. For shades/blinds: find cover.xxx entities. Match room name to friendly name (e.g. 'bedroom shade' -> 'Master Shade' -> cover.roller_blind_X).",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "entity_id": {
-                                "type": "string",
-                                "description": "Exact entity ID. For shades/blinds use cover.xxx, for lights use light.xxx"
-                            },
-                            "entity_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Multiple entity IDs at once"
-                            },
-                            "device": {
-                                "type": "string",
-                                "description": "Fuzzy name: 'living room shade', 'master shade', 'bedroom light'"
-                            },
-                            "area": {
-                                "type": "string",
-                                "description": "Control all devices in area"
-                            },
-                            "domain": {
-                                "type": "string",
-                                "enum": ["light", "switch", "lock", "cover", "fan", "media_player", "climate", "vacuum", "scene", "script", "all"],
-                                "description": "Device type filter for area"
-                            },
-                            "action": {
-                                "type": "string",
-                                "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position", "play", "pause", "next", "previous", "volume_up", "volume_down", "set_volume", "mute", "unmute", "set_temperature", "start", "dock", "locate", "return_home", "activate"],
-                                "description": "Action to perform. For BLINDS/SHADES: 'open'=raise, 'close'=lower, 'stop'=halt movement, 'favorite' or 'preset'=go to saved position"
-                            },
-                            "brightness": {
-                                "type": "integer",
-                                "description": "Light brightness 0-100"
-                            },
-                            "color": {
-                                "type": "string",
-                                "description": "Light color name (red, blue, warm, cool, etc.)"
-                            },
-                            "color_temp": {
-                                "type": "integer",
-                                "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"
-                            },
-                            "position": {
-                                "type": "integer",
-                                "description": "Cover position 0-100 (0=closed)"
-                            },
-                            "volume": {
-                                "type": "integer",
-                                "description": "Volume level 0-100"
-                            },
-                            "temperature": {
-                                "type": "number",
-                                "description": "Target temperature for climate"
-                            },
-                            "hvac_mode": {
-                                "type": "string",
-                                "enum": ["heat", "cool", "auto", "off", "fan_only", "dry"],
-                                "description": "HVAC mode for climate"
-                            },
-                            "fan_speed": {
-                                "type": "string",
-                                "enum": ["low", "medium", "high", "auto"],
-                                "description": "Fan speed"
-                            }
+        # ===== DEVICE CONTROL (LLM fallback when native intents fail) =====
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "control_device",
+                "description": "Control smart home devices (lights, switches, locks, fans, blinds, shades, covers). Use this when you need to control a device. IMPORTANT: Use the 'device' parameter with the user's spoken name - it does fuzzy matching! For blinds/shades: 'raise/up'=open, 'lower/down'=close, 'stop'=halt.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "device": {
+                            "type": "string",
+                            "description": "PREFERRED: Use the device name the user said - fuzzy matching finds the right entity. Examples: 'kitchen light', 'bedroom shade', 'front door'"
                         },
-                        "required": ["action"]
-                    }
+                        "entity_id": {
+                            "type": "string",
+                            "description": "Only if you know the exact entity ID. Prefer 'device' for fuzzy matching."
+                        },
+                        "entity_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Multiple exact entity IDs"
+                        },
+                        "area": {
+                            "type": "string",
+                            "description": "Control all devices in area"
+                        },
+                        "domain": {
+                            "type": "string",
+                            "enum": ["light", "switch", "lock", "cover", "fan", "media_player", "climate", "vacuum", "scene", "script", "all"],
+                            "description": "Device type filter for area"
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position", "play", "pause", "next", "previous", "volume_up", "volume_down", "set_volume", "mute", "unmute", "set_temperature", "start", "dock", "locate", "return_home", "activate"],
+                            "description": "Action to perform. For BLINDS/SHADES: 'open'=raise, 'close'=lower, 'stop'=halt movement, 'favorite' or 'preset'=go to saved position"
+                        },
+                        "brightness": {
+                            "type": "integer",
+                            "description": "Light brightness 0-100"
+                        },
+                        "color": {
+                            "type": "string",
+                            "description": "Light color name (red, blue, warm, cool, etc.)"
+                        },
+                        "color_temp": {
+                            "type": "integer",
+                            "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"
+                        },
+                        "position": {
+                            "type": "integer",
+                            "description": "Cover position 0-100 (0=closed)"
+                        },
+                        "volume": {
+                            "type": "integer",
+                            "description": "Volume level 0-100"
+                        },
+                        "temperature": {
+                            "type": "number",
+                            "description": "Target temperature for climate"
+                        },
+                        "hvac_mode": {
+                            "type": "string",
+                            "enum": ["heat", "cool", "auto", "off", "fan_only", "dry"],
+                            "description": "HVAC mode for climate"
+                        },
+                        "fan_speed": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high", "auto"],
+                            "description": "Fan speed"
+                        }
+                    },
+                    "required": ["action"]
                 }
-            })
+            }
+        })
 
         return tools
 
@@ -1435,13 +998,12 @@ class LMStudioConversationEntity(ConversationEntity):
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        # Try native intents first if enabled
-        if self.use_native_intents:
-            native_result = await self._try_native_intent(user_input, conversation_id)
-            if native_result is not None:
-                return native_result
+        # Try native intents first, fall back to LLM if they fail
+        native_result = await self._try_native_intent(user_input, conversation_id)
+        if native_result is not None:
+            return native_result
 
-        # Use pre-built tools (cached at config load for speed!)
+        # Native intent didn't handle it - use LLM with tools (including control_device for fuzzy matching)
         tools = self._tools
 
         # SPEED OPTIMIZATION #2: Dynamic max_tokens
@@ -1480,47 +1042,10 @@ class LMStudioConversationEntity(ConversationEntity):
         else:
             return self.max_tokens
 
-    def _is_blinds_command(self, text: str) -> bool:
-        """Check if user input is about blinds/shades control.
-
-        Returns True if the text contains blinds-related keywords,
-        indicating it should be handled by the LLM instead of native intents.
-        """
-        text_lower = text.lower()
-
-        # Check for blinds device keywords
-        has_blinds_keyword = any(keyword in text_lower for keyword in BLINDS_KEYWORDS)
-
-        # Check for blinds action keywords
-        has_action_keyword = any(keyword in text_lower for keyword in BLINDS_ACTION_KEYWORDS)
-
-        # Need at least one blinds keyword OR (action keyword with configured blinds entity name)
-        if has_blinds_keyword:
-            _LOGGER.debug("Blinds command detected (keyword): %s", text[:50])
-            return True
-
-        # Also check if any configured blinds entity friendly names are mentioned
-        if self.blinds_entities:
-            for entity_id in self.blinds_entities:
-                # Get friendly name from state
-                state = self.hass.states.get(entity_id)
-                if state:
-                    friendly_name = state.attributes.get("friendly_name", "").lower()
-                    if friendly_name and friendly_name in text_lower:
-                        _LOGGER.debug("Blinds command detected (entity name '%s'): %s", friendly_name, text[:50])
-                        return True
-
-        return False
-
     async def _try_native_intent(
         self, user_input: conversation.ConversationInput, conversation_id: str
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
-        # Check if this is a blinds command that should bypass native intents
-        if self.enable_blinds and self._is_blinds_command(user_input.text):
-            _LOGGER.info("Blinds control enabled - bypassing native intent for: %s", user_input.text[:50])
-            return None
-
         try:
             # Use HA's default conversation agent to parse and handle intent
             result = await conversation.async_converse(
@@ -1537,14 +1062,12 @@ class LMStudioConversationEntity(ConversationEntity):
             # Check if we got an intent result
             if hasattr(result.response, 'intent') and result.response.intent is not None:
                 intent_type = result.response.intent.intent_type
-                _LOGGER.warning("=== NATIVE INTENT MATCHED === type='%s' for: '%s'", intent_type, user_input.text[:80])
+                _LOGGER.debug("Native intent matched: %s", intent_type)
 
                 # Check if this intent is in our excluded list
                 if intent_type in self.excluded_intents:
-                    _LOGGER.warning("=== INTENT EXCLUDED === '%s' - sending to LLM", intent_type)
+                    _LOGGER.debug("Intent excluded, sending to LLM: %s", intent_type)
                     return None
-                else:
-                    _LOGGER.warning("=== INTENT NOT EXCLUDED === '%s' - will be handled natively", intent_type)
 
             # ACTION_DONE = command executed (turn on light, etc)
             if result.response.response_type == intent.IntentResponseType.ACTION_DONE:
@@ -2003,16 +1526,42 @@ class LMStudioConversationEntity(ConversationEntity):
         
         elif tool_name == "get_weather_forecast":
             forecast_type = arguments.get("forecast_type", "both")
-            
+            location_query = arguments.get("location", "").strip()
+
             # API key from config - required
             api_key = self.openweathermap_api_key
             if not api_key:
                 return {"error": "OpenWeatherMap API key not configured. Add it in Settings → PolyVoice → API Keys."}
-            
-            # Use custom location if set, otherwise fall back to defaults
+
+            # Default to configured location
             latitude = self.custom_latitude or self.hass.config.latitude
             longitude = self.custom_longitude or self.hass.config.longitude
-            
+            location_name = None
+
+            # If user specified a location, geocode it
+            if location_query:
+                try:
+                    geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={location_query}&limit=1&appid={api_key}"
+                    async with self._session.get(geo_url) as geo_response:
+                        if geo_response.status == 200:
+                            geo_data = await geo_response.json()
+                            if geo_data and len(geo_data) > 0:
+                                latitude = geo_data[0]["lat"]
+                                longitude = geo_data[0]["lon"]
+                                location_name = geo_data[0].get("name", location_query)
+                                if geo_data[0].get("state"):
+                                    location_name += f", {geo_data[0]['state']}"
+                                if geo_data[0].get("country"):
+                                    location_name += f", {geo_data[0]['country']}"
+                                _LOGGER.info("Geocoded '%s' to %s (%s, %s)", location_query, location_name, latitude, longitude)
+                            else:
+                                return {"error": f"Could not find location: {location_query}"}
+                        else:
+                            return {"error": f"Geocoding failed for: {location_query}"}
+                except Exception as geo_err:
+                    _LOGGER.error("Geocoding error: %s", geo_err)
+                    return {"error": f"Could not geocode location: {location_query}"}
+
             try:
                 result = {}
                 self._track_api_call("weather")
@@ -2031,7 +1580,7 @@ class LMStudioConversationEntity(ConversationEntity):
                                 "humidity": data["main"]["humidity"],
                                 "conditions": data["weather"][0]["description"].title(),
                                 "wind_speed": round(data["wind"]["speed"]),
-                                "location": data["name"]
+                                "location": location_name or data["name"]
                             }
                             
                             # Add rain if present
@@ -3660,13 +3209,8 @@ class LMStudioConversationEntity(ConversationEntity):
             domain_filter = arguments.get("domain", "").strip().lower()
             device_name = arguments.get("device", "").strip()
 
-            # Log exactly what the LLM requested - CRITICAL for debugging entity_id mismatches
-            _LOGGER.warning("=== CONTROL_DEVICE CALLED ===")
-            _LOGGER.warning("  entity_id: %s", direct_entity_id or "(none)")
-            _LOGGER.warning("  entity_ids: %s", entity_ids_list or "(none)")
-            _LOGGER.warning("  device: %s", device_name or "(none)")
-            _LOGGER.warning("  area: %s", area_name or "(none)")
-            _LOGGER.warning("  action: %s", action)
+            _LOGGER.debug("control_device: entity=%s, device=%s, area=%s, action=%s",
+                          direct_entity_id or entity_ids_list, device_name, area_name, action)
 
             if not action:
                 return {"error": "No action specified."}
@@ -4376,13 +3920,10 @@ class LMStudioConversationEntity(ConversationEntity):
             room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
 
-            _LOGGER.info("=== MUSIC CONTROL START ===")
-            _LOGGER.info("room_player_mapping config: %s", self.room_player_mapping)
+            _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
-
-            _LOGGER.info("all_players list: %s", all_players)
 
             if not all_players:
                 _LOGGER.error("No players configured! room_player_mapping is empty")
