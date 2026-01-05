@@ -1083,21 +1083,36 @@ class LMStudioConversationEntity(ConversationEntity):
         _LOGGER.info("=== NATIVE INTENT PRE-FILTER: '%s' ===", user_input.text)
         _LOGGER.info("Excluded intents count: %d", len(self.excluded_intents))
 
-        # Map intents to keywords that would trigger them
+        # AGGRESSIVE MUSIC PRE-FILTER: If ANY music intent is excluded, skip native HA for music commands
+        MUSIC_INTENTS = {
+            "HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
+            "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute",
+            "HassSetVolume", "HassSetVolumeRelative"
+        }
+        MUSIC_KEYWORDS = ["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
+                         "mute", "unmute", "volume", "louder", "quieter"]
+        MUSIC_CONTEXT = ["music", "song", "track", "audio", "speaker", "playing"]
+
+        has_music_intent_excluded = bool(self.excluded_intents & MUSIC_INTENTS)
+        has_music_keyword = any(kw in text_lower for kw in MUSIC_KEYWORDS)
+        has_music_context = any(ctx in text_lower for ctx in MUSIC_CONTEXT)
+
+        # If music intents excluded AND (has music keyword with context OR bare command)
+        if has_music_intent_excluded and has_music_keyword:
+            # Check for music context or if it's a bare command
+            bare_commands = ["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute"]
+            is_bare_command = text_lower.strip().rstrip(".!") in bare_commands
+
+            if has_music_context or is_bare_command:
+                _LOGGER.info("MUSIC PRE-FILTER: Skipping native HA (keyword=%s, context=%s, bare=%s)",
+                            has_music_keyword, has_music_context, is_bare_command)
+                return None
+
+        # Map other intents to keywords
         INTENT_KEYWORD_MAP = {
-            # Media intents - comprehensive keywords
-            "HassMediaPause": ["pause", " stop"],  # space before stop to avoid "stop timer"
-            "HassMediaUnpause": ["resume", "unpause", "continue play"],
-            "HassMediaNext": ["next", "skip"],
-            "HassMediaPrevious": ["previous", "back", "last track", "go back"],
-            "HassMediaSearchAndPlay": ["play "],  # space after to be more specific
-            "HassMediaPlayerMute": ["mute"],
-            "HassMediaPlayerUnmute": ["unmute"],
-            "HassSetVolume": ["set volume", "volume to"],
-            "HassSetVolumeRelative": ["louder", "quieter", "turn up", "turn down", "volume up", "volume down"],
             # Climate intents
-            "HassClimateSetTemperature": ["set temperature", "set thermostat", "degrees"],
-            "HassClimateGetTemperature": ["what's the temperature", "how warm", "how cold"],
+            "HassClimateSetTemperature": ["set temperature", "set thermostat", "set the temperature"],
+            "HassClimateGetTemperature": ["what's the temperature", "how warm", "how cold", "what temperature"],
             # Cover intents
             "HassOpenCover": ["open blind", "open shade", "open curtain", "raise blind"],
             "HassCloseCover": ["close blind", "close shade", "close curtain", "lower blind"],
@@ -1111,22 +1126,22 @@ class LMStudioConversationEntity(ConversationEntity):
             "HassDecreaseTimer": ["reduce time", "decrease timer"],
             "HassTimerStatus": ["timer status", "how much time"],
             # State/toggle intents
-            "HassGetState": ["what is", "is the", "status of", "state of"],
+            "HassGetState": ["what is the", "is the", "status of", "state of"],
             "HassTurnOn": ["turn on", "switch on"],
             "HassTurnOff": ["turn off", "switch off"],
             "HassToggle": ["toggle"],
             # Other intents
             "HassNevermind": ["never mind", "nevermind", "forget it"],
-            "HassGetCurrentTime": ["what time", "current time"],
-            "HassGetCurrentDate": ["what date", "what day", "today's date"],
+            "HassGetCurrentTime": ["what time is", "current time"],
+            "HassGetCurrentDate": ["what date", "what day is", "today's date"],
             "HassGetWeather": ["weather", "forecast"],
-            "HassLightSet": ["dim", "brighten", "set light", "light to"],
+            "HassLightSet": ["dim the", "brighten", "set light", "light to"],
             "HassFanSetSpeed": ["fan speed", "set fan"],
             "HassVacuumStart": ["start vacuum", "vacuum the"],
             "HassVacuumReturnToBase": ["dock vacuum", "return vacuum"],
         }
 
-        # Check each excluded intent for matching keywords
+        # Check other excluded intents for matching keywords
         for excluded_intent in self.excluded_intents:
             keywords = INTENT_KEYWORD_MAP.get(excluded_intent, [])
             for kw in keywords:
