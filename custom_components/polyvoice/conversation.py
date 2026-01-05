@@ -1074,6 +1074,31 @@ class LMStudioConversationEntity(ConversationEntity):
         self, user_input: conversation.ConversationInput, conversation_id: str
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
+
+        # PRE-FILTER: Skip native HA entirely for music commands if music intents are excluded
+        # This prevents HA from executing the command before we can check exclusions
+        text_lower = user_input.text.lower()
+        music_keywords = ["pause", "resume", "skip", "next", "previous", "stop", "mute", "unmute", "play"]
+        music_intents_excluded = any(intent in self.excluded_intents for intent in [
+            "HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
+            "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute"
+        ])
+
+        if music_intents_excluded:
+            # Check if this looks like a music command
+            has_music_keyword = any(kw in text_lower for kw in music_keywords)
+            has_music_context = any(ctx in text_lower for ctx in ["music", "song", "track", "audio", "speaker"])
+
+            if has_music_keyword and has_music_context:
+                _LOGGER.debug("Pre-filter: Music command detected with excluded intents, skipping native HA")
+                return None
+
+            # Also catch bare commands like "pause", "skip", "next"
+            stripped = text_lower.strip().rstrip(".")
+            if stripped in ["pause", "resume", "skip", "next", "previous", "stop", "mute", "unmute"]:
+                _LOGGER.debug("Pre-filter: Bare music command '%s' detected, skipping native HA", stripped)
+                return None
+
         try:
             # Use HA's default conversation agent to parse and handle intent
             result = await conversation.async_converse(
