@@ -4157,16 +4157,65 @@ class LMStudioConversationEntity(ConversationEntity):
                 _LOGGER.info("  No player found in target states")
                 return None
 
-            # Helper: find any "active" player (playing, paused, buffering, on, idle with media)
+            # Helper: SMART active player detection
+            # Priority: playing > paused > buffering > has media loaded
             def find_active_player():
-                """Find any player that appears to be active."""
-                active_states = ["playing", "paused", "buffering", "on", "idle"]
+                """Intelligently find the most active player from configured players only.
+
+                Uses multiple detection methods:
+                1. State-based: playing > paused > buffering
+                2. Attribute-based: media_title, media_content_id, media_position
+                3. Only checks players configured in room_player_mapping
+                """
+                _LOGGER.info("=== SMART ACTIVE PLAYER DETECTION ===")
+                _LOGGER.info("Checking %d configured players: %s", len(all_players), all_players)
+
+                # Priority 1: Find player in "playing" state
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state and state.state == "playing":
+                        _LOGGER.info("  FOUND: %s is PLAYING", pid)
+                        return pid
+
+                # Priority 2: Find player in "paused" state (has active media)
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state and state.state == "paused":
+                        _LOGGER.info("  FOUND: %s is PAUSED (has active media)", pid)
+                        return pid
+
+                # Priority 3: Find player in "buffering" state
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state and state.state == "buffering":
+                        _LOGGER.info("  FOUND: %s is BUFFERING", pid)
+                        return pid
+
+                # Priority 4: Find player with media loaded (has media_title or media_content_id)
                 for pid in all_players:
                     state = self.hass.states.get(pid)
                     if state:
-                        _LOGGER.info("  Player %s → state: '%s'", pid, state.state)
-                        if state.state in active_states and state.state != "unavailable":
+                        attrs = state.attributes
+                        media_title = attrs.get("media_title")
+                        media_content_id = attrs.get("media_content_id")
+                        media_position = attrs.get("media_position", 0) or 0
+
+                        _LOGGER.info("  %s: state=%s, title=%s, content_id=%s, position=%s",
+                                    pid, state.state, media_title, media_content_id, media_position)
+
+                        # If player has media info, it's likely the active one
+                        if media_title or media_content_id or media_position > 0:
+                            _LOGGER.info("  FOUND: %s has media loaded", pid)
                             return pid
+
+                # Priority 5: Find any player that's not off/unavailable
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state and state.state not in ["off", "unavailable", "unknown"]:
+                        _LOGGER.info("  FALLBACK: %s is available (state=%s)", pid, state.state)
+                        return pid
+
+                _LOGGER.info("  NO ACTIVE PLAYER FOUND")
                 return None
 
             # Helper: get room name from entity_id
