@@ -83,6 +83,13 @@ from .const import (
     CONF_DEVICE_ALIASES,
     CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
+    CONF_BLINDS_ENTITIES,
+    CONF_BLINDS_FAVORITE_BUTTONS,
+    CONF_ENABLE_BLINDS,
+    DEFAULT_ENABLE_BLINDS,
+    DEFAULT_BLINDS_ENTITIES,
+    BLINDS_KEYWORDS,
+    BLINDS_ACTION_KEYWORDS,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_CUSTOM_EXCLUDED_INTENTS,
@@ -478,6 +485,14 @@ class LMStudioConversationEntity(ConversationEntity):
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
+
+        # Blinds/shades configuration
+        self.enable_blinds = config.get(CONF_ENABLE_BLINDS, DEFAULT_ENABLE_BLINDS)
+        self.blinds_entities = parse_list_config(config.get(CONF_BLINDS_ENTITIES, DEFAULT_BLINDS_ENTITIES))
+        self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
+        _LOGGER.info("Blinds config: enabled=%s, entities=%s, buttons=%s",
+                     self.enable_blinds, self.blinds_entities, self.blinds_favorite_buttons)
+
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
         self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
@@ -1465,10 +1480,47 @@ class LMStudioConversationEntity(ConversationEntity):
         else:
             return self.max_tokens
 
+    def _is_blinds_command(self, text: str) -> bool:
+        """Check if user input is about blinds/shades control.
+
+        Returns True if the text contains blinds-related keywords,
+        indicating it should be handled by the LLM instead of native intents.
+        """
+        text_lower = text.lower()
+
+        # Check for blinds device keywords
+        has_blinds_keyword = any(keyword in text_lower for keyword in BLINDS_KEYWORDS)
+
+        # Check for blinds action keywords
+        has_action_keyword = any(keyword in text_lower for keyword in BLINDS_ACTION_KEYWORDS)
+
+        # Need at least one blinds keyword OR (action keyword with configured blinds entity name)
+        if has_blinds_keyword:
+            _LOGGER.debug("Blinds command detected (keyword): %s", text[:50])
+            return True
+
+        # Also check if any configured blinds entity friendly names are mentioned
+        if self.blinds_entities:
+            for entity_id in self.blinds_entities:
+                # Get friendly name from state
+                state = self.hass.states.get(entity_id)
+                if state:
+                    friendly_name = state.attributes.get("friendly_name", "").lower()
+                    if friendly_name and friendly_name in text_lower:
+                        _LOGGER.debug("Blinds command detected (entity name '%s'): %s", friendly_name, text[:50])
+                        return True
+
+        return False
+
     async def _try_native_intent(
         self, user_input: conversation.ConversationInput, conversation_id: str
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
+        # Check if this is a blinds command that should bypass native intents
+        if self.enable_blinds and self._is_blinds_command(user_input.text):
+            _LOGGER.info("Blinds control enabled - bypassing native intent for: %s", user_input.text[:50])
+            return None
+
         try:
             # Use HA's default conversation agent to parse and handle intent
             result = await conversation.async_converse(

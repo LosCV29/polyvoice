@@ -30,6 +30,7 @@
           "model": "Model Settings",
           "features": "Enable/Disable Features",
           "entities": "Entity Configuration",
+          "blinds": "Blinds/Shades Control",
           "api_keys": "External API Keys",
           "location": "Location Settings",
           "intents": "Native Intents",
@@ -87,6 +88,20 @@
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
           "thermostat_temp_step": "Temperature Adjustment Step"
+        }
+      },
+      "blinds": {
+        "title": "Blinds/Shades Control",
+        "description": "Enable flexible voice control for blinds and shades via LLM. Commands like 'lower the shades', 'stop the blind', or 'open halfway' will bypass Home Assistant's rigid matching.",
+        "data": {
+          "enable_blinds": "Enable Blinds/Shades Control (LLM Mode)",
+          "blinds_entities": "Blinds/Shades to Control",
+          "blinds_favorite_buttons": "Favorite Position Buttons"
+        },
+        "data_description": {
+          "enable_blinds": "When enabled, blinds commands go directly to the LLM for natural language understanding instead of Home Assistant's native intents.",
+          "blinds_entities": "Select which cover entities should be controlled via LLM voice commands.",
+          "blinds_favorite_buttons": "Select the 'My Position' or 'Favorite' buttons for your shades."
         }
       },
       "api_keys": {

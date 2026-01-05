@@ -115,6 +115,7 @@ CONF_ENABLE_THERMOSTAT: Final = "enable_thermostat"
 CONF_ENABLE_DEVICE_STATUS: Final = "enable_device_status"
 CONF_ENABLE_WIKIPEDIA: Final = "enable_wikipedia"
 CONF_ENABLE_MUSIC: Final = "enable_music"
+CONF_ENABLE_BLINDS: Final = "enable_blinds"
 
 DEFAULT_ENABLE_WEATHER: Final = True
 DEFAULT_ENABLE_CALENDAR: Final = True
@@ -128,6 +129,7 @@ DEFAULT_ENABLE_THERMOSTAT: Final = True
 DEFAULT_ENABLE_DEVICE_STATUS: Final = True
 DEFAULT_ENABLE_WIKIPEDIA: Final = True
 DEFAULT_ENABLE_MUSIC: Final = False  # Requires Music Assistant + player config
+DEFAULT_ENABLE_BLINDS: Final = False  # Requires blinds entity configuration
 
 # =============================================================================
 # ENTITY CONFIGURATION - User-defined entities
@@ -139,6 +141,8 @@ CONF_LAST_ACTIVE_SPEAKER: Final = "last_active_speaker"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_NOTIFICATION_SERVICE: Final = "notification_service"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
+CONF_BLINDS_ENTITIES: Final = "blinds_entities"
+CONF_BLINDS_FAVORITE_BUTTONS: Final = "blinds_favorite_buttons"
 
 # Thermostat settings - user-configurable temperature range and step
 CONF_THERMOSTAT_MIN_TEMP: Final = "thermostat_min_temp"
@@ -200,6 +204,8 @@ DEFAULT_LAST_ACTIVE_SPEAKER: Final = ""  # input_text helper entity_id
 DEFAULT_DEVICE_ALIASES: Final = ""
 DEFAULT_NOTIFICATION_SERVICE: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
+DEFAULT_BLINDS_ENTITIES: Final = ""
+DEFAULT_BLINDS_FAVORITE_BUTTONS: Final = ""
 
 # Thermostat defaults (Fahrenheit by default)
 DEFAULT_THERMOSTAT_MIN_TEMP: Final = 60
@@ -253,6 +259,20 @@ ALL_NATIVE_INTENTS: Final = [
     "HassTurnOn",
     "HassVacuumReturnToBase",
     "HassVacuumStart",
+]
+
+# =============================================================================
+# BLINDS/SHADES DETECTION KEYWORDS
+# =============================================================================
+# Keywords that indicate a blinds/shades command - bypass native intents
+BLINDS_KEYWORDS: Final = [
+    "blind", "blinds", "shade", "shades", "curtain", "curtains",
+    "drape", "drapes", "roller", "window cover", "window shade",
+]
+
+BLINDS_ACTION_KEYWORDS: Final = [
+    "raise", "lower", "open", "close", "stop", "halt",
+    "halfway", "half", "favorite", "my position", "preset",
 ]
 
 # =============================================================================
