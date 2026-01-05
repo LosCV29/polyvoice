@@ -646,13 +646,19 @@ class LMStudioConversationEntity(ConversationEntity):
             filtered_lines.append("")
             filtered_lines.append("CRITICAL: NEVER say 'I can't do that'. ALWAYS call control_device!")
             filtered_lines.append("")
+            filtered_lines.append("*** ENTITY ID WARNING ***")
+            filtered_lines.append("Numbers in entity_id DO NOT MATCH numbers in friendly name!")
+            filtered_lines.append("Example: cover.roller_blind_2 = 'Master Shade 1' <- DIFFERENT NUMBERS!")
+            filtered_lines.append("         cover.roller_blind_3 = 'Master Shade 2' <- DIFFERENT NUMBERS!")
+            filtered_lines.append("ALWAYS look up the EXACT entity_id from the DEVICE LIST below.")
+            filtered_lines.append("NEVER assume roller_blind_1 = Shade 1. Check the list!")
+            filtered_lines.append("")
             filtered_lines.append("HOW TO MATCH DEVICES:")
-            filtered_lines.append("1. User says 'shade/blind/curtain' -> find cover.xxx entities")
-            filtered_lines.append("2. User says 'light/lamp' -> find light.xxx entities")
-            filtered_lines.append("3. User says room name -> match to area OR friendly name")
-            filtered_lines.append("4. 'living room shade' -> cover entity with 'living' in name/area")
-            filtered_lines.append("5. 'bedroom shade' OR 'master shade' -> cover entity with 'master' in name")
-            filtered_lines.append("6. Entity IDs may NOT match names! cover.roller_blind_2 could be 'Master Shade 1'")
+            filtered_lines.append("1. User says 'master shade 1' -> look at device list, find friendly name 'Master Shade 1'")
+            filtered_lines.append("2. Use the entity_id shown BEFORE the = sign (e.g. cover.roller_blind_2)")
+            filtered_lines.append("3. 'shade/blind/curtain' = cover.xxx entities")
+            filtered_lines.append("4. 'light/lamp' = light.xxx entities")
+            filtered_lines.append("5. 'bedroom shade' OR 'master shade' = cover entity with 'master' in friendly name")
             filtered_lines.append("")
             filtered_lines.append("SHADE/BLIND COMMANDS:")
             filtered_lines.append("  open/raise/up -> action='open'")
@@ -3603,9 +3609,13 @@ class LMStudioConversationEntity(ConversationEntity):
             domain_filter = arguments.get("domain", "").strip().lower()
             device_name = arguments.get("device", "").strip()
 
-            # Log exactly what the LLM requested
-            _LOGGER.info("control_device called: entity_id=%s, device=%s, area=%s, action=%s",
-                        direct_entity_id or "(none)", device_name or "(none)", area_name or "(none)", action)
+            # Log exactly what the LLM requested - CRITICAL for debugging entity_id mismatches
+            _LOGGER.warning("=== CONTROL_DEVICE CALLED ===")
+            _LOGGER.warning("  entity_id: %s", direct_entity_id or "(none)")
+            _LOGGER.warning("  entity_ids: %s", entity_ids_list or "(none)")
+            _LOGGER.warning("  device: %s", device_name or "(none)")
+            _LOGGER.warning("  area: %s", area_name or "(none)")
+            _LOGGER.warning("  action: %s", action)
 
             if not action:
                 return {"error": "No action specified."}
