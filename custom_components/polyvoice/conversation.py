@@ -392,7 +392,7 @@ class LMStudioConversationEntity(ConversationEntity):
         raw_mapping = config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING)
         self.room_player_mapping = parse_entity_config(raw_mapping)
         self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER)
-        _LOGGER.info("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
+        _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
         # Entity configuration from UI
@@ -404,7 +404,7 @@ class LMStudioConversationEntity(ConversationEntity):
         self.enable_blinds = config.get(CONF_ENABLE_BLINDS, DEFAULT_ENABLE_BLINDS)
         self.blinds_entities = parse_list_config(config.get(CONF_BLINDS_ENTITIES, DEFAULT_BLINDS_ENTITIES))
         self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
-        _LOGGER.info("Blinds config: enabled=%s, entities=%s, buttons=%s",
+        _LOGGER.debug("Blinds config: enabled=%s, entities=%s, buttons=%s",
                      self.enable_blinds, self.blinds_entities, self.blinds_favorite_buttons)
 
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
@@ -468,7 +468,7 @@ class LMStudioConversationEntity(ConversationEntity):
             "Config updated - Provider: %s, Model: %s, Tools: %d",
             self.provider, self.model, len(self._tools)
         )
-        _LOGGER.info("Excluded intents: %s", self.excluded_intents)
+        _LOGGER.debug("Excluded intents: %s", self.excluded_intents)
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
@@ -878,10 +878,10 @@ class LMStudioConversationEntity(ConversationEntity):
             })
 
         # ===== MUSIC CONTROL (if enabled and room mapping configured) =====
-        _LOGGER.info("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
+        _LOGGER.debug("Music check: enable_music=%s, room_player_mapping=%s", self.enable_music, self.room_player_mapping)
         if self.enable_music and self.room_player_mapping:
             rooms_list = ", ".join(self.room_player_mapping.keys())
-            _LOGGER.info("MUSIC TOOL ENABLED with rooms: %s", rooms_list)
+            _LOGGER.debug("Music tool enabled with rooms: %s", rooms_list)
             tools.append({
                 "type": "function",
                 "function": {
@@ -1062,14 +1062,12 @@ class LMStudioConversationEntity(ConversationEntity):
             # Check if we got an intent result
             if hasattr(result.response, 'intent') and result.response.intent is not None:
                 intent_type = result.response.intent.intent_type
-                _LOGGER.warning("=== NATIVE INTENT MATCHED === type='%s' for: '%s'", intent_type, user_input.text[:80])
+                _LOGGER.debug("Native intent matched: %s", intent_type)
 
                 # Check if this intent is in our excluded list
                 if intent_type in self.excluded_intents:
-                    _LOGGER.warning("=== INTENT EXCLUDED === '%s' - sending to LLM", intent_type)
+                    _LOGGER.debug("Intent excluded, sending to LLM: %s", intent_type)
                     return None
-                else:
-                    _LOGGER.warning("=== INTENT NOT EXCLUDED === '%s' - will be handled natively", intent_type)
 
             # ACTION_DONE = command executed (turn on light, etc)
             if result.response.response_type == intent.IntentResponseType.ACTION_DONE:
@@ -3211,13 +3209,8 @@ class LMStudioConversationEntity(ConversationEntity):
             domain_filter = arguments.get("domain", "").strip().lower()
             device_name = arguments.get("device", "").strip()
 
-            # Log exactly what the LLM requested - CRITICAL for debugging entity_id mismatches
-            _LOGGER.warning("=== CONTROL_DEVICE CALLED ===")
-            _LOGGER.warning("  entity_id: %s", direct_entity_id or "(none)")
-            _LOGGER.warning("  entity_ids: %s", entity_ids_list or "(none)")
-            _LOGGER.warning("  device: %s", device_name or "(none)")
-            _LOGGER.warning("  area: %s", area_name or "(none)")
-            _LOGGER.warning("  action: %s", action)
+            _LOGGER.debug("control_device: entity=%s, device=%s, area=%s, action=%s",
+                          direct_entity_id or entity_ids_list, device_name, area_name, action)
 
             if not action:
                 return {"error": "No action specified."}
@@ -3927,13 +3920,10 @@ class LMStudioConversationEntity(ConversationEntity):
             room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
 
-            _LOGGER.info("=== MUSIC CONTROL START ===")
-            _LOGGER.info("room_player_mapping config: %s", self.room_player_mapping)
+            _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
-
-            _LOGGER.info("all_players list: %s", all_players)
 
             if not all_players:
                 _LOGGER.error("No players configured! room_player_mapping is empty")
