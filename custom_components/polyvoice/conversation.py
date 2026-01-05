@@ -633,7 +633,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "get_weather_forecast",
-                    "description": "Get current weather AND forecast. ALWAYS call this for weather questions: 'what's the weather', 'will it rain', 'temperature', 'forecast'.",
+                    "description": "Get current weather AND forecast for any city worldwide. Use for: 'what's the weather', 'will it rain', 'temperature', 'forecast'. Pass city name in 'location' to check weather elsewhere (e.g., 'Paris', 'Tokyo', 'New York').",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1528,16 +1528,42 @@ class LMStudioConversationEntity(ConversationEntity):
         
         elif tool_name == "get_weather_forecast":
             forecast_type = arguments.get("forecast_type", "both")
-            
+            location_query = arguments.get("location", "").strip()
+
             # API key from config - required
             api_key = self.openweathermap_api_key
             if not api_key:
                 return {"error": "OpenWeatherMap API key not configured. Add it in Settings → PolyVoice → API Keys."}
-            
-            # Use custom location if set, otherwise fall back to defaults
+
+            # Default to configured location
             latitude = self.custom_latitude or self.hass.config.latitude
             longitude = self.custom_longitude or self.hass.config.longitude
-            
+            location_name = None
+
+            # If user specified a location, geocode it
+            if location_query:
+                try:
+                    geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={location_query}&limit=1&appid={api_key}"
+                    async with self._session.get(geo_url) as geo_response:
+                        if geo_response.status == 200:
+                            geo_data = await geo_response.json()
+                            if geo_data and len(geo_data) > 0:
+                                latitude = geo_data[0]["lat"]
+                                longitude = geo_data[0]["lon"]
+                                location_name = geo_data[0].get("name", location_query)
+                                if geo_data[0].get("state"):
+                                    location_name += f", {geo_data[0]['state']}"
+                                if geo_data[0].get("country"):
+                                    location_name += f", {geo_data[0]['country']}"
+                                _LOGGER.info("Geocoded '%s' to %s (%s, %s)", location_query, location_name, latitude, longitude)
+                            else:
+                                return {"error": f"Could not find location: {location_query}"}
+                        else:
+                            return {"error": f"Geocoding failed for: {location_query}"}
+                except Exception as geo_err:
+                    _LOGGER.error("Geocoding error: %s", geo_err)
+                    return {"error": f"Could not geocode location: {location_query}"}
+
             try:
                 result = {}
                 self._track_api_call("weather")
@@ -1556,7 +1582,7 @@ class LMStudioConversationEntity(ConversationEntity):
                                 "humidity": data["main"]["humidity"],
                                 "conditions": data["weather"][0]["description"].title(),
                                 "wind_speed": round(data["wind"]["speed"]),
-                                "location": data["name"]
+                                "location": location_name or data["name"]
                             }
                             
                             # Add rain if present
