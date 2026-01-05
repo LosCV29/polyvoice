@@ -1080,18 +1080,21 @@ class LMStudioConversationEntity(ConversationEntity):
         # (async_converse executes the intent, THEN returns - too late to exclude)
         text_lower = user_input.text.lower()
 
+        _LOGGER.info("=== NATIVE INTENT PRE-FILTER: '%s' ===", user_input.text)
+        _LOGGER.info("Excluded intents count: %d", len(self.excluded_intents))
+
         # Map intents to keywords that would trigger them
         INTENT_KEYWORD_MAP = {
-            # Media intents
-            "HassMediaPause": ["pause"],
-            "HassMediaUnpause": ["resume", "unpause", "continue"],
+            # Media intents - comprehensive keywords
+            "HassMediaPause": ["pause", " stop"],  # space before stop to avoid "stop timer"
+            "HassMediaUnpause": ["resume", "unpause", "continue play"],
             "HassMediaNext": ["next", "skip"],
-            "HassMediaPrevious": ["previous", "back", "last track"],
-            "HassMediaSearchAndPlay": ["play"],
+            "HassMediaPrevious": ["previous", "back", "last track", "go back"],
+            "HassMediaSearchAndPlay": ["play "],  # space after to be more specific
             "HassMediaPlayerMute": ["mute"],
             "HassMediaPlayerUnmute": ["unmute"],
-            "HassSetVolume": ["volume", "set volume"],
-            "HassSetVolumeRelative": ["louder", "quieter", "turn up", "turn down"],
+            "HassSetVolume": ["set volume", "volume to"],
+            "HassSetVolumeRelative": ["louder", "quieter", "turn up", "turn down", "volume up", "volume down"],
             # Climate intents
             "HassClimateSetTemperature": ["set temperature", "set thermostat", "degrees"],
             "HassClimateGetTemperature": ["what's the temperature", "how warm", "how cold"],
@@ -1100,7 +1103,7 @@ class LMStudioConversationEntity(ConversationEntity):
             "HassCloseCover": ["close blind", "close shade", "close curtain", "lower blind"],
             # Timer intents
             "HassStartTimer": ["set timer", "start timer", "timer for"],
-            "HassCancelTimer": ["cancel timer", "stop timer", "delete timer"],
+            "HassCancelTimer": ["cancel timer", "delete timer"],
             "HassCancelAllTimers": ["cancel all timer"],
             "HassPauseTimer": ["pause timer"],
             "HassUnpauseTimer": ["resume timer", "unpause timer"],
@@ -1113,7 +1116,7 @@ class LMStudioConversationEntity(ConversationEntity):
             "HassTurnOff": ["turn off", "switch off"],
             "HassToggle": ["toggle"],
             # Other intents
-            "HassNevermind": ["never mind", "nevermind", "forget it", "cancel"],
+            "HassNevermind": ["never mind", "nevermind", "forget it"],
             "HassGetCurrentTime": ["what time", "current time"],
             "HassGetCurrentDate": ["what date", "what day", "today's date"],
             "HassGetWeather": ["weather", "forecast"],
@@ -1126,10 +1129,13 @@ class LMStudioConversationEntity(ConversationEntity):
         # Check each excluded intent for matching keywords
         for excluded_intent in self.excluded_intents:
             keywords = INTENT_KEYWORD_MAP.get(excluded_intent, [])
-            if any(kw in text_lower for kw in keywords):
-                _LOGGER.debug("Pre-filter: '%s' matches excluded intent %s, skipping native HA",
-                             user_input.text[:30], excluded_intent)
-                return None
+            for kw in keywords:
+                if kw in text_lower:
+                    _LOGGER.info("PRE-FILTER HIT: '%s' matched keyword '%s' for excluded intent %s",
+                                 user_input.text, kw, excluded_intent)
+                    return None
+
+        _LOGGER.info("No pre-filter match, proceeding to native HA for: %s", user_input.text)
 
         try:
             # Use HA's default conversation agent to parse and handle intent
