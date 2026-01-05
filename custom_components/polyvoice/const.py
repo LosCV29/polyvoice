@@ -300,7 +300,7 @@ GENERAL GUIDELINES:
 - For restaurant recommendations, use get_restaurant_recommendations
 - For news, use get_news
 - For calendar events, use get_calendar_events
-- For music control (play, skip, pause, etc.), let native Home Assistant handle it
+- For music control (play, pause, skip, next, previous, mute, unmute), use control_music
 - For native HA control (lights, locks), let native HA Assist handle those
 """
 
