@@ -1075,82 +1075,128 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
 
-        # PRE-FILTER: Skip native HA for commands matching excluded intents
-        # This prevents HA from executing commands before we can check exclusions
-        # (async_converse executes the intent, THEN returns - too late to exclude)
+        # AGGRESSIVE PRE-FILTER: Skip native HA immediately for ALL excluded intent categories
+        # This is DETERMINISTIC - no cycling through intents, just fast keyword matching
         text_lower = user_input.text.lower()
 
-        _LOGGER.info("=== NATIVE INTENT PRE-FILTER: '%s' ===", user_input.text)
-        _LOGGER.info("Excluded intents count: %d", len(self.excluded_intents))
-
-        # AGGRESSIVE MUSIC PRE-FILTER: If ANY music intent is excluded, skip native HA for music commands
-        MUSIC_INTENTS = {
-            "HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
-            "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute",
-            "HassSetVolume", "HassSetVolumeRelative"
+        # Define ALL intent categories with keywords - if excluded, skip native HA immediately
+        INTENT_CATEGORIES = {
+            # MUSIC/MEDIA - route to control_music tool
+            "music": {
+                "intents": {"HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
+                           "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute",
+                           "HassSetVolume", "HassSetVolumeRelative"},
+                "keywords": ["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
+                            "mute", "unmute", "volume", "louder", "quieter", "turn up", "turn down"],
+                "context": ["music", "song", "track", "audio", "speaker", "playing", "playlist", "the"],
+                "bare_ok": ["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute", "play"],
+            },
+            # CLIMATE - route to control_thermostat tool
+            "climate": {
+                "intents": {"HassClimateSetTemperature", "HassClimateGetTemperature"},
+                "keywords": ["temperature", "thermostat", "heat", "cool", "degrees", "warmer", "cooler", "hvac", "ac", "air conditioning"],
+                "context": [],  # Empty = keyword alone is enough
+                "bare_ok": [],
+            },
+            # COVERS/BLINDS - route to control_device tool
+            "covers": {
+                "intents": {"HassOpenCover", "HassCloseCover", "HassSetPosition"},
+                "keywords": ["blind", "shade", "curtain", "cover", "shutter"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # TIMERS - route to LLM
+            "timers": {
+                "intents": {"HassStartTimer", "HassCancelTimer", "HassCancelAllTimers", "HassPauseTimer",
+                           "HassUnpauseTimer", "HassIncreaseTimer", "HassDecreaseTimer", "HassTimerStatus"},
+                "keywords": ["timer", "timers"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # STATE QUERIES - route to check_device_status tool
+            "state": {
+                "intents": {"HassGetState"},
+                "keywords": ["status of", "state of", "is the", "are the", "what is the"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # LIGHTS - route to control_device tool
+            "lights": {
+                "intents": {"HassLightSet"},
+                "keywords": ["dim", "brighten", "brightness"],
+                "context": ["light", "lamp", "the"],
+                "bare_ok": [],
+            },
+            # WEATHER - route to get_weather_forecast tool
+            "weather": {
+                "intents": {"HassGetWeather"},
+                "keywords": ["weather", "forecast", "rain today", "sunny", "going to rain"],
+                "context": [],
+                "bare_ok": ["weather", "forecast"],
+            },
+            # TIME/DATE - let LLM handle
+            "datetime": {
+                "intents": {"HassGetCurrentTime", "HassGetCurrentDate"},
+                "keywords": ["what time", "current time", "what date", "what day", "today's date"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # NEVERMIND - let LLM handle conversationally
+            "nevermind": {
+                "intents": {"HassNevermind"},
+                "keywords": ["never mind", "nevermind", "forget it", "cancel that", "don't worry"],
+                "context": [],
+                "bare_ok": ["nevermind", "cancel"],
+            },
+            # VACUUM - route to control_device
+            "vacuum": {
+                "intents": {"HassVacuumStart", "HassVacuumReturnToBase"},
+                "keywords": ["vacuum", "roomba", "robot vacuum"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # FAN - route to control_device
+            "fan": {
+                "intents": {"HassFanSetSpeed"},
+                "keywords": ["fan speed", "ceiling fan", "fan to"],
+                "context": [],
+                "bare_ok": [],
+            },
+            # ON/OFF - these typically use native HA, but if excluded route to control_device
+            "power": {
+                "intents": {"HassTurnOn", "HassTurnOff", "HassToggle"},
+                "keywords": ["turn on", "turn off", "switch on", "switch off", "toggle"],
+                "context": [],
+                "bare_ok": [],
+            },
         }
-        MUSIC_KEYWORDS = ["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
-                         "mute", "unmute", "volume", "louder", "quieter"]
-        MUSIC_CONTEXT = ["music", "song", "track", "audio", "speaker", "playing"]
 
-        has_music_intent_excluded = bool(self.excluded_intents & MUSIC_INTENTS)
-        has_music_keyword = any(kw in text_lower for kw in MUSIC_KEYWORDS)
-        has_music_context = any(ctx in text_lower for ctx in MUSIC_CONTEXT)
+        # FAST DETERMINISTIC CHECK - no cycling, just match and return
+        for category, config in INTENT_CATEGORIES.items():
+            # Skip if no intents from this category are excluded
+            excluded_in_category = self.excluded_intents & config["intents"]
+            if not excluded_in_category:
+                continue
 
-        # If music intents excluded AND (has music keyword with context OR bare command)
-        if has_music_intent_excluded and has_music_keyword:
-            # Check for music context or if it's a bare command
-            bare_commands = ["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute"]
-            is_bare_command = text_lower.strip().rstrip(".!") in bare_commands
+            # Check if command has a keyword from this category
+            has_keyword = any(kw in text_lower for kw in config["keywords"])
+            if not has_keyword:
+                continue
 
-            if has_music_context or is_bare_command:
-                _LOGGER.info("MUSIC PRE-FILTER: Skipping native HA (keyword=%s, context=%s, bare=%s)",
-                            has_music_keyword, has_music_context, is_bare_command)
+            # If context is empty, keyword alone is enough to match
+            # If context exists, need keyword + context OR bare command
+            if not config["context"]:
+                _LOGGER.info("PRE-FILTER [%s]: '%s' → LLM (keyword match)", category.upper(), user_input.text[:40])
                 return None
 
-        # Map other intents to keywords
-        INTENT_KEYWORD_MAP = {
-            # Climate intents
-            "HassClimateSetTemperature": ["set temperature", "set thermostat", "set the temperature"],
-            "HassClimateGetTemperature": ["what's the temperature", "how warm", "how cold", "what temperature"],
-            # Cover intents
-            "HassOpenCover": ["open blind", "open shade", "open curtain", "raise blind"],
-            "HassCloseCover": ["close blind", "close shade", "close curtain", "lower blind"],
-            # Timer intents
-            "HassStartTimer": ["set timer", "start timer", "timer for"],
-            "HassCancelTimer": ["cancel timer", "delete timer"],
-            "HassCancelAllTimers": ["cancel all timer"],
-            "HassPauseTimer": ["pause timer"],
-            "HassUnpauseTimer": ["resume timer", "unpause timer"],
-            "HassIncreaseTimer": ["add time", "increase timer"],
-            "HassDecreaseTimer": ["reduce time", "decrease timer"],
-            "HassTimerStatus": ["timer status", "how much time"],
-            # State/toggle intents
-            "HassGetState": ["what is the", "is the", "status of", "state of"],
-            "HassTurnOn": ["turn on", "switch on"],
-            "HassTurnOff": ["turn off", "switch off"],
-            "HassToggle": ["toggle"],
-            # Other intents
-            "HassNevermind": ["never mind", "nevermind", "forget it"],
-            "HassGetCurrentTime": ["what time is", "current time"],
-            "HassGetCurrentDate": ["what date", "what day is", "today's date"],
-            "HassGetWeather": ["weather", "forecast"],
-            "HassLightSet": ["dim the", "brighten", "set light", "light to"],
-            "HassFanSetSpeed": ["fan speed", "set fan"],
-            "HassVacuumStart": ["start vacuum", "vacuum the"],
-            "HassVacuumReturnToBase": ["dock vacuum", "return vacuum"],
-        }
+            has_context = any(ctx in text_lower for ctx in config["context"])
+            is_bare = text_lower.strip().rstrip(".!?") in config.get("bare_ok", [])
 
-        # Check other excluded intents for matching keywords
-        for excluded_intent in self.excluded_intents:
-            keywords = INTENT_KEYWORD_MAP.get(excluded_intent, [])
-            for kw in keywords:
-                if kw in text_lower:
-                    _LOGGER.info("PRE-FILTER HIT: '%s' matched keyword '%s' for excluded intent %s",
-                                 user_input.text, kw, excluded_intent)
-                    return None
+            if has_context or is_bare:
+                _LOGGER.info("PRE-FILTER [%s]: '%s' → LLM", category.upper(), user_input.text[:40])
+                return None
 
-        _LOGGER.info("No pre-filter match, proceeding to native HA for: %s", user_input.text)
+        _LOGGER.debug("No pre-filter match, using native HA for: %s", user_input.text[:40])
 
         try:
             # Use HA's default conversation agent to parse and handle intent
