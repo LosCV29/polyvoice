@@ -71,7 +71,6 @@ from .const import (
     CONF_ROOM_PLAYER_MAPPING,
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
-    CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
@@ -107,7 +106,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
-    DEFAULT_NOTIFICATION_SERVICE,
     DEFAULT_CAMERA_ENTITIES,
     DEFAULT_BLINDS_ENTITIES,
     DEFAULT_BLINDS_FAVORITE_BUTTONS,
@@ -660,10 +658,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_LAST_ACTIVE_SPEAKER in user_input:
                 processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
 
-            # Handle notification service
-            if CONF_NOTIFICATION_SERVICE in user_input:
-                processed_input[CONF_NOTIFICATION_SERVICE] = user_input[CONF_NOTIFICATION_SERVICE]
-
             # Handle room to player mapping
             if CONF_ROOM_PLAYER_MAPPING in user_input:
                 processed_input[CONF_ROOM_PLAYER_MAPPING] = user_input[CONF_ROOM_PLAYER_MAPPING]
@@ -790,14 +784,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(
                             domain="input_text",
                             multiple=False,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_NOTIFICATION_SERVICE,
-                        default=current.get(CONF_NOTIFICATION_SERVICE, DEFAULT_NOTIFICATION_SERVICE),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
                         )
                     ),
                     vol.Optional(

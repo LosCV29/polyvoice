@@ -77,7 +77,6 @@ from .const import (
     CONF_LAST_ACTIVE_SPEAKER,
     CONF_CALENDAR_ENTITIES,
     CONF_DEVICE_ALIASES,
-    CONF_NOTIFICATION_SERVICE,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
@@ -409,7 +408,6 @@ class LMStudioConversationEntity(ConversationEntity):
                      self.enable_blinds, self.blinds_entities, self.blinds_favorite_buttons)
 
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
-        self.notification_service = config.get(CONF_NOTIFICATION_SERVICE, "")
 
         # Thermostat settings (user-configurable limits and step)
         # First determine unit preference to select appropriate defaults
