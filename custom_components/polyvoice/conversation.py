@@ -914,17 +914,17 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Use simple action words like 'next', 'previous', 'pause', 'play'. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Control MUSIC playback via Music Assistant. IMPORTANT: For pause/stop/skip/next/previous/mute/unmute/resume - NO ROOM NEEDED! The system auto-detects the active player. Only specify room for 'play' to start new music in a specific location. Available rooms: {rooms_list}",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
                                 "enum": ["play", "start", "pause", "hold", "resume", "unpause", "continue", "stop", "end", "next", "skip", "forward", "skip_next", "previous", "back", "prev", "skip_previous", "what_playing", "now_playing", "current", "transfer", "move", "shuffle", "mute", "silence", "unmute"],
-                                "description": "The music action: play, pause, resume/unpause/continue, stop, next/skip/forward, previous/back/prev, what_playing/now_playing, transfer/move, shuffle, mute/silence, unmute"
+                                "description": "The action to perform. For pause/stop/skip/mute/resume - just provide the action, active player is auto-detected!"
                             },
-                            "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
-                            "room": {"type": "string", "description": f"Target room: {rooms_list}"},
+                            "query": {"type": "string", "description": "What to play - only needed for 'play' action (artist, album, track, playlist, or genre)."},
+                            "room": {"type": "string", "description": f"OPTIONAL! Only needed for 'play' to start music in a specific room. For pause/stop/skip/mute/resume - OMIT THIS, active player auto-detected. Rooms: {rooms_list}"},
                             "media_type": {
                                 "type": "string",
                                 "enum": ["artist", "album", "track", "playlist", "genre"],
