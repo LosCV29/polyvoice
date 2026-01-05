@@ -30,6 +30,9 @@
           "model": "Model Settings",
           "features": "Enable/Disable Features",
           "entities": "Entity Configuration",
+          "aliases": "Device Aliases",
+          "music_rooms": "Music Room Mapping",
+          "blinds": "Blinds/Shades Control",
           "api_keys": "External API Keys",
           "location": "Location Settings",
           "intents": "Excluded Intents",
@@ -80,12 +83,28 @@
           "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
-          "room_player_mapping": "Room to Player Mapping (room: entity_id, one per line)",
-          "device_aliases": "Device Aliases (alias: entity_id, one per line)",
           "last_active_speaker": "Last Active Speaker Helper (input_text)",
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
           "thermostat_temp_step": "Temperature Adjustment Step"
+        }
+      },
+      "aliases": {
+        "title": "Device Aliases",
+        "description": "{aliases}",
+        "data": {
+          "alias_entity": "Select Entity",
+          "alias_name": "Alias Name (what you'll say)",
+          "clear_aliases": "Clear All Aliases"
+        }
+      },
+      "music_rooms": {
+        "title": "Music Room Mapping",
+        "description": "{mappings}",
+        "data": {
+          "room_player": "Select Media Player",
+          "room_name": "Room Name (e.g., living room, kitchen)",
+          "clear_rooms": "Clear All Room Mappings"
         }
       },
       "api_keys": {

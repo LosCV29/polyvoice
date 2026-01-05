@@ -438,6 +438,8 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "model": "Model Settings",
                 "features": "Enable/Disable Features",
                 "entities": "Entity Configuration",
+                "aliases": "Device Aliases",
+                "music_rooms": "Music Room Mapping",
                 "blinds": "Blinds/Shades Control",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
@@ -658,14 +660,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_LAST_ACTIVE_SPEAKER in user_input:
                 processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
 
-            # Handle room to player mapping
-            if CONF_ROOM_PLAYER_MAPPING in user_input:
-                processed_input[CONF_ROOM_PLAYER_MAPPING] = user_input[CONF_ROOM_PLAYER_MAPPING]
-
-            # Handle device aliases
-            if CONF_DEVICE_ALIASES in user_input:
-                processed_input[CONF_DEVICE_ALIASES] = user_input[CONF_DEVICE_ALIASES]
-
             # Handle thermostat settings
             if CONF_THERMOSTAT_MIN_TEMP in user_input:
                 processed_input[CONF_THERMOSTAT_MIN_TEMP] = user_input[CONF_THERMOSTAT_MIN_TEMP]
@@ -773,24 +767,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         )
                     ),
                     vol.Optional(
-                        CONF_ROOM_PLAYER_MAPPING,
-                        default=current.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                            multiline=True,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_DEVICE_ALIASES,
-                        default=current.get(CONF_DEVICE_ALIASES, ""),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                            multiline=True,
-                        )
-                    ),
-                    vol.Optional(
                         CONF_LAST_ACTIVE_SPEAKER,
                         default=current.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER),
                     ): selector.EntitySelector(
@@ -835,6 +811,135 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                             mode=selector.NumberSelectorMode.BOX,
                         )
                     ),
+                }
+            ),
+        )
+
+    async def async_step_aliases(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle device aliases configuration."""
+        current = {**self._entry.data, **self._entry.options}
+        current_aliases = current.get(CONF_DEVICE_ALIASES, "")
+
+        if user_input is not None:
+            new_entity = user_input.get("alias_entity", "")
+            new_alias = user_input.get("alias_name", "").strip()
+            clear_all = user_input.get("clear_aliases", False)
+
+            if clear_all:
+                # Clear all aliases
+                new_options = {**self._entry.options, CONF_DEVICE_ALIASES: ""}
+                return self.async_create_entry(title="", data=new_options)
+
+            if new_entity and new_alias:
+                # Add new alias to existing
+                if current_aliases:
+                    updated_aliases = f"{current_aliases}\n{new_alias}: {new_entity}"
+                else:
+                    updated_aliases = f"{new_alias}: {new_entity}"
+
+                new_options = {**self._entry.options, CONF_DEVICE_ALIASES: updated_aliases}
+                # Save and show form again to add more
+                self.hass.config_entries.async_update_entry(
+                    self._entry, options=new_options
+                )
+                # Refresh current aliases for display
+                current_aliases = updated_aliases
+
+            if not new_entity and not new_alias:
+                # User submitted empty form - return to menu
+                return self.async_create_entry(title="", data=self._entry.options)
+
+        # Build description showing current aliases
+        if current_aliases:
+            alias_lines = [line.strip() for line in current_aliases.split("\n") if line.strip()]
+            alias_display = "\n".join([f"• {line}" for line in alias_lines])
+            description = f"**Current aliases:**\n{alias_display}\n\nAdd another alias below, or submit empty to finish."
+        else:
+            description = "No aliases configured. Add your first alias below."
+
+        return self.async_show_form(
+            step_id="aliases",
+            description_placeholders={"aliases": description},
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("alias_entity"): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            multiple=False,
+                        )
+                    ),
+                    vol.Optional("alias_name"): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
+                    vol.Optional("clear_aliases", default=False): cv.boolean,
+                }
+            ),
+        )
+
+    async def async_step_music_rooms(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle music room to player mapping configuration."""
+        current = {**self._entry.data, **self._entry.options}
+        current_mapping = current.get(CONF_ROOM_PLAYER_MAPPING, "")
+
+        if user_input is not None:
+            new_player = user_input.get("room_player", "")
+            new_room = user_input.get("room_name", "").strip().lower()
+            clear_all = user_input.get("clear_rooms", False)
+
+            if clear_all:
+                # Clear all mappings
+                new_options = {**self._entry.options, CONF_ROOM_PLAYER_MAPPING: ""}
+                return self.async_create_entry(title="", data=new_options)
+
+            if new_player and new_room:
+                # Add new mapping to existing
+                if current_mapping:
+                    updated_mapping = f"{current_mapping}\n{new_room}: {new_player}"
+                else:
+                    updated_mapping = f"{new_room}: {new_player}"
+
+                new_options = {**self._entry.options, CONF_ROOM_PLAYER_MAPPING: updated_mapping}
+                # Save and show form again to add more
+                self.hass.config_entries.async_update_entry(
+                    self._entry, options=new_options
+                )
+                # Refresh current mapping for display
+                current_mapping = updated_mapping
+
+            if not new_player and not new_room:
+                # User submitted empty form - return to menu
+                return self.async_create_entry(title="", data=self._entry.options)
+
+        # Build description showing current mappings
+        if current_mapping:
+            mapping_lines = [line.strip() for line in current_mapping.split("\n") if line.strip()]
+            mapping_display = "\n".join([f"• {line}" for line in mapping_lines])
+            description = f"**Current room mappings:**\n{mapping_display}\n\nAdd another room below, or submit empty to finish."
+        else:
+            description = "No room mappings configured. Add your first room below."
+
+        return self.async_show_form(
+            step_id="music_rooms",
+            description_placeholders={"mappings": description},
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("room_player"): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="media_player",
+                            multiple=False,
+                        )
+                    ),
+                    vol.Optional("room_name"): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
+                    vol.Optional("clear_rooms", default=False): cv.boolean,
                 }
             ),
         )
