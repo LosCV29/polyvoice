@@ -69,7 +69,6 @@ from .const import (
     CONF_THERMOSTAT_ENTITY,
     CONF_CALENDAR_ENTITIES,
     CONF_ROOM_PLAYER_MAPPING,
-    CONF_LAST_ACTIVE_SPEAKER,
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_ENTITIES,
@@ -104,7 +103,6 @@ from .const import (
     DEFAULT_THERMOSTAT_ENTITY,
     DEFAULT_CALENDAR_ENTITIES,
     DEFAULT_ROOM_PLAYER_MAPPING,
-    DEFAULT_LAST_ACTIVE_SPEAKER,
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_CAMERA_ENTITIES,
     DEFAULT_BLINDS_ENTITIES,
@@ -656,10 +654,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     processed_input[CONF_CAMERA_ENTITIES] = cam_list
 
-            # Handle last active speaker helper
-            if CONF_LAST_ACTIVE_SPEAKER in user_input:
-                processed_input[CONF_LAST_ACTIVE_SPEAKER] = user_input[CONF_LAST_ACTIVE_SPEAKER]
-
             # Handle thermostat settings
             if CONF_THERMOSTAT_MIN_TEMP in user_input:
                 processed_input[CONF_THERMOSTAT_MIN_TEMP] = user_input[CONF_THERMOSTAT_MIN_TEMP]
@@ -764,15 +758,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(
                             domain="camera",
                             multiple=True,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_LAST_ACTIVE_SPEAKER,
-                        default=current.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="input_text",
-                            multiple=False,
                         )
                     ),
                     vol.Optional(

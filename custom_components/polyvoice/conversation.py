@@ -74,7 +74,6 @@ from .const import (
     # Entity config
     CONF_THERMOSTAT_ENTITY,
     CONF_ROOM_PLAYER_MAPPING,
-    CONF_LAST_ACTIVE_SPEAKER,
     CONF_CALENDAR_ENTITIES,
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
@@ -99,7 +98,6 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     DEFAULT_ENABLE_MUSIC,
     DEFAULT_ROOM_PLAYER_MAPPING,
-    DEFAULT_LAST_ACTIVE_SPEAKER,
     CAMERA_FRIENDLY_NAMES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
@@ -412,7 +410,6 @@ class LMStudioConversationEntity(ConversationEntity):
         # Music configuration
         raw_mapping = config.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING)
         self.room_player_mapping = parse_entity_config(raw_mapping)
-        self.last_active_speaker = config.get(CONF_LAST_ACTIVE_SPEAKER, DEFAULT_LAST_ACTIVE_SPEAKER)
         _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
@@ -4262,13 +4259,6 @@ class LMStudioConversationEntity(ConversationEntity):
                                 blocking=True
                             )
 
-                    # Track last active
-                    if self.last_active_speaker and target_players:
-                        await self.hass.services.async_call(
-                            "input_text", "set_value",
-                            {"entity_id": self.last_active_speaker, "value": target_players[0]}
-                        )
-
                     return {"status": "playing", "message": f"Playing {query} in the {room}"}
 
                 elif action == "pause":
@@ -4350,12 +4340,6 @@ class LMStudioConversationEntity(ConversationEntity):
                         target={"entity_id": target},
                         blocking=True
                     )
-                    # Update last active
-                    if self.last_active_speaker:
-                        await self.hass.services.async_call(
-                            "input_text", "set_value",
-                            {"entity_id": self.last_active_speaker, "value": target}
-                        )
                     return {"status": "transferred", "message": f"Music transferred to {get_room_name(target)}"}
 
                 elif action == "shuffle":
@@ -4433,13 +4417,6 @@ class LMStudioConversationEntity(ConversationEntity):
                             {"entity_id": player, "shuffle": True},
                             blocking=True
                         )
-
-                        # Track last active
-                        if self.last_active_speaker:
-                            await self.hass.services.async_call(
-                                "input_text", "set_value",
-                                {"entity_id": self.last_active_speaker, "value": player}
-                            )
 
                         return {
                             "status": "shuffling",
