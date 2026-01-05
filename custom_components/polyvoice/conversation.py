@@ -465,8 +465,8 @@ class LMStudioConversationEntity(ConversationEntity):
         self._tools = self._build_tools()
         
         _LOGGER.info(
-            "Config updated - Provider: %s, Model: %s, Assist: %s, Tools: %d",
-            self.provider, self.model, self.enable_assist, len(self._tools)
+            "Config updated - Provider: %s, Model: %s, Tools: %d",
+            self.provider, self.model, len(self._tools)
         )
         _LOGGER.info("Excluded intents: %s", self.excluded_intents)
 
