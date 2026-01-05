@@ -4141,14 +4141,31 @@ class LMStudioConversationEntity(ConversationEntity):
                 _LOGGER.error("No players configured! room_player_mapping is empty")
                 return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping and add entries like: living room: media_player.your_player"}
 
-            # Helper: find player in a specific state
-            def find_player_by_state(target_state):
-                """Scan all players and return the one in the target state."""
+            # Helper: find player in a specific state (or list of states)
+            def find_player_by_state(target_states):
+                """Scan all players and return the one in the target state(s)."""
+                if isinstance(target_states, str):
+                    target_states = [target_states]
+                _LOGGER.info("Looking for player in states: %s", target_states)
                 for pid in all_players:
                     state = self.hass.states.get(pid)
                     if state:
-                        _LOGGER.info("  %s → %s", pid, state.state)
-                        if state.state == target_state:
+                        _LOGGER.info("  Player %s → state: '%s'", pid, state.state)
+                        if state.state in target_states:
+                            _LOGGER.info("  Found match: %s", pid)
+                            return pid
+                _LOGGER.info("  No player found in target states")
+                return None
+
+            # Helper: find any "active" player (playing, paused, buffering, on, idle with media)
+            def find_active_player():
+                """Find any player that appears to be active."""
+                active_states = ["playing", "paused", "buffering", "on", "idle"]
+                for pid in all_players:
+                    state = self.hass.states.get(pid)
+                    if state:
+                        _LOGGER.info("  Player %s → state: '%s'", pid, state.state)
+                        if state.state in active_states and state.state != "unavailable":
                             return pid
                 return None
 
@@ -4224,16 +4241,12 @@ class LMStudioConversationEntity(ConversationEntity):
                     return {"error": "No paused music to resume"}
 
                 elif action == "stop":
-                    # Find the player that's PLAYING or PAUSED and stop it
-                    _LOGGER.info("Looking for player in 'playing' or 'paused' state...")
-                    playing = find_player_by_state("playing")
-                    if playing:
-                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": playing})
-                        return {"status": "stopped", "message": f"Stopped in {get_room_name(playing)}"}
-                    paused = find_player_by_state("paused")
-                    if paused:
-                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": paused})
-                        return {"status": "stopped", "message": f"Stopped in {get_room_name(paused)}"}
+                    # Find any active player and stop it
+                    _LOGGER.info("Looking for any active player to stop...")
+                    player = find_active_player()
+                    if player:
+                        await self.hass.services.async_call("media_player", "media_stop", {"entity_id": player})
+                        return {"status": "stopped", "message": f"Stopped in {get_room_name(player)}"}
                     return {"message": "No music is playing"}
 
                 elif action == "skip_next":
@@ -4391,42 +4404,27 @@ class LMStudioConversationEntity(ConversationEntity):
                         return {"error": f"Failed to find or play playlist: {str(search_err)}"}
 
                 elif action == "mute":
-                    # Find the player that's currently PLAYING and mute it
-                    _LOGGER.info("Looking for player in 'playing' state to mute...")
-                    playing = find_player_by_state("playing")
-                    if playing:
+                    # Find any active player and mute it
+                    _LOGGER.info("Looking for any active player to mute...")
+                    player = find_active_player()
+                    if player:
                         await self.hass.services.async_call(
                             "media_player", "volume_mute",
-                            {"entity_id": playing, "is_volume_muted": True}
+                            {"entity_id": player, "is_volume_muted": True}
                         )
-                        return {"status": "muted", "message": f"Muted {get_room_name(playing)}"}
-                    # Also check paused players
-                    paused = find_player_by_state("paused")
-                    if paused:
-                        await self.hass.services.async_call(
-                            "media_player", "volume_mute",
-                            {"entity_id": paused, "is_volume_muted": True}
-                        )
-                        return {"status": "muted", "message": f"Muted {get_room_name(paused)}"}
+                        return {"status": "muted", "message": f"Muted {get_room_name(player)}"}
                     return {"error": "No active music player to mute"}
 
                 elif action == "unmute":
-                    # Find the player that's currently PLAYING or PAUSED and unmute it
-                    _LOGGER.info("Looking for player to unmute...")
-                    playing = find_player_by_state("playing")
-                    if playing:
+                    # Find any active player and unmute it
+                    _LOGGER.info("Looking for any active player to unmute...")
+                    player = find_active_player()
+                    if player:
                         await self.hass.services.async_call(
                             "media_player", "volume_mute",
-                            {"entity_id": playing, "is_volume_muted": False}
+                            {"entity_id": player, "is_volume_muted": False}
                         )
-                        return {"status": "unmuted", "message": f"Unmuted {get_room_name(playing)}"}
-                    paused = find_player_by_state("paused")
-                    if paused:
-                        await self.hass.services.async_call(
-                            "media_player", "volume_mute",
-                            {"entity_id": paused, "is_volume_muted": False}
-                        )
-                        return {"status": "unmuted", "message": f"Unmuted {get_room_name(paused)}"}
+                        return {"status": "unmuted", "message": f"Unmuted {get_room_name(player)}"}
                     return {"error": "No active music player to unmute"}
 
                 else:
