@@ -662,6 +662,10 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_ROOM_PLAYER_MAPPING in user_input:
                 processed_input[CONF_ROOM_PLAYER_MAPPING] = user_input[CONF_ROOM_PLAYER_MAPPING]
 
+            # Handle device aliases
+            if CONF_DEVICE_ALIASES in user_input:
+                processed_input[CONF_DEVICE_ALIASES] = user_input[CONF_DEVICE_ALIASES]
+
             # Handle thermostat settings
             if CONF_THERMOSTAT_MIN_TEMP in user_input:
                 processed_input[CONF_THERMOSTAT_MIN_TEMP] = user_input[CONF_THERMOSTAT_MIN_TEMP]
@@ -771,6 +775,15 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_ROOM_PLAYER_MAPPING,
                         default=current.get(CONF_ROOM_PLAYER_MAPPING, DEFAULT_ROOM_PLAYER_MAPPING),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                            multiline=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_DEVICE_ALIASES,
+                        default=current.get(CONF_DEVICE_ALIASES, ""),
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,

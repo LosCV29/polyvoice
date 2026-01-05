@@ -81,6 +81,7 @@
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
           "room_player_mapping": "Room to Player Mapping (room: entity_id, one per line)",
+          "device_aliases": "Device Aliases (alias: entity_id, one per line)",
           "last_active_speaker": "Last Active Speaker Helper (input_text)",
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
