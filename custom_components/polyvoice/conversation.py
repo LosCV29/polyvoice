@@ -917,14 +917,14 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle, mute, unmute. Supports fuzzy commands: 'next/skip/forward'→skip_next, 'back/previous'→skip_previous, 'unpause/continue'→resume. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer", "shuffle"],
-                                "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled."
+                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer", "shuffle", "mute", "unmute"],
+                                "description": "The music action to perform. Fuzzy matching supported: next/skip/forward→skip_next, back/previous→skip_previous, unpause/continue→resume."
                             },
                             "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
@@ -3963,6 +3963,40 @@ class LMStudioConversationEntity(ConversationEntity):
             room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
 
+            # Fuzzy action mapping for natural language variations
+            action_aliases = {
+                # Play variations
+                "start": "play", "begin": "play",
+                # Pause variations
+                "hold": "pause", "wait": "pause",
+                # Resume variations
+                "unpause": "resume", "continue": "resume", "go": "resume", "carry on": "resume",
+                # Stop variations
+                "end": "stop", "quit": "stop", "off": "stop",
+                # Skip next variations
+                "next": "skip_next", "skip": "skip_next", "forward": "skip_next",
+                "next track": "skip_next", "next song": "skip_next", "skip track": "skip_next",
+                # Skip previous variations
+                "previous": "skip_previous", "back": "skip_previous", "prev": "skip_previous",
+                "last": "skip_previous", "previous track": "skip_previous", "previous song": "skip_previous",
+                "go back": "skip_previous", "last track": "skip_previous", "last song": "skip_previous",
+                # What's playing variations
+                "now playing": "what_playing", "current": "what_playing", "whats playing": "what_playing",
+                "what is playing": "what_playing", "currently playing": "what_playing",
+                # Transfer variations
+                "move": "transfer", "switch": "transfer",
+                # Mute variations
+                "silence": "mute", "quiet": "mute", "hush": "mute",
+                # Unmute variations
+                "unsilence": "unmute", "sound on": "unmute", "volume on": "unmute",
+            }
+
+            # Apply fuzzy mapping
+            original_action = action
+            action = action_aliases.get(action, action)
+            if action != original_action:
+                _LOGGER.debug("Fuzzy action mapping: '%s' → '%s'", original_action, action)
+
             _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
 
             players = self.room_player_mapping  # {room: entity_id}
@@ -4220,6 +4254,45 @@ class LMStudioConversationEntity(ConversationEntity):
                     except Exception as search_err:
                         _LOGGER.error("Shuffle search/play error: %s", search_err, exc_info=True)
                         return {"error": f"Failed to find or play playlist: {str(search_err)}"}
+
+                elif action == "mute":
+                    # Find the player that's currently PLAYING and mute it
+                    _LOGGER.info("Looking for player in 'playing' state to mute...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call(
+                            "media_player", "volume_mute",
+                            {"entity_id": playing, "is_volume_muted": True}
+                        )
+                        return {"status": "muted", "message": f"Muted {get_room_name(playing)}"}
+                    # Also check paused players
+                    paused = find_player_by_state("paused")
+                    if paused:
+                        await self.hass.services.async_call(
+                            "media_player", "volume_mute",
+                            {"entity_id": paused, "is_volume_muted": True}
+                        )
+                        return {"status": "muted", "message": f"Muted {get_room_name(paused)}"}
+                    return {"error": "No active music player to mute"}
+
+                elif action == "unmute":
+                    # Find the player that's currently PLAYING or PAUSED and unmute it
+                    _LOGGER.info("Looking for player to unmute...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call(
+                            "media_player", "volume_mute",
+                            {"entity_id": playing, "is_volume_muted": False}
+                        )
+                        return {"status": "unmuted", "message": f"Unmuted {get_room_name(playing)}"}
+                    paused = find_player_by_state("paused")
+                    if paused:
+                        await self.hass.services.async_call(
+                            "media_player", "volume_mute",
+                            {"entity_id": paused, "is_volume_muted": False}
+                        )
+                        return {"status": "unmuted", "message": f"Unmuted {get_room_name(paused)}"}
+                    return {"error": "No active music player to unmute"}
 
                 else:
                     return {"error": f"Unknown action: {action}"}
