@@ -633,11 +633,11 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "get_weather_forecast",
-                    "description": "Get current weather AND forecast for any city worldwide. Use for: 'what's the weather', 'will it rain', 'temperature', 'forecast'. Pass city name in 'location' to check weather elsewhere (e.g., 'Paris', 'Tokyo', 'New York').",
+                    "description": "Get current weather AND forecast for any city worldwide. Use for: 'what's the weather', 'will it rain', 'temperature', 'forecast'. Pass location ONLY if user specifies a place. Omit 'location' param entirely to use home location.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "location": {"type": "string", "description": "City name (optional, defaults to configured location)"},
+                            "location": {"type": "string", "description": "City with state/country (e.g., 'Paris, France', 'Tokyo, Japan', 'Miami, Florida', 'Austin, Texas'). ONLY include if user specifies a location."},
                             "forecast_type": {"type": "string", "enum": ["current", "weekly", "both"], "description": "Type: 'current' for now, 'weekly' for 5-day, 'both' for all (default: both)"}
                         }
                     }
