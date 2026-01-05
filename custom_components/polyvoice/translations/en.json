@@ -32,7 +32,7 @@
           "entities": "Entity Configuration",
           "api_keys": "External API Keys",
           "location": "Location Settings",
-          "intents": "Native Intents",
+          "intents": "Excluded Intents",
           "advanced": "Advanced Settings"
         }
       },
@@ -107,15 +107,10 @@
         }
       },
       "intents": {
-        "title": "Intent Settings",
-        "description": "Native intents are tried first. Excluded intents skip native and use LLM custom functions instead (thermostat, device status, blinds, etc).",
+        "title": "Excluded Intents",
+        "description": "Select intents to skip HA native handling and use PolyVoice's LLM functions instead. Default excludes ensure thermostat, device status, and blinds use custom functions.",
         "data": {
-          "enable_assist": "Enable Assist Control",
-          "excluded_intents": "Excluded Intents (use LLM custom functions)",
-          "custom_excluded_intents": "Additional Excluded Intents (comma-separated)"
-        },
-        "data_description": {
-          "excluded_intents": "These intents skip HA native handling and use PolyVoice's LLM-powered custom functions instead. Default excludes ensure thermostat, device status, and blinds use your custom functions."
+          "excluded_intents": "Excluded Intents"
         }
       },
       "advanced": {

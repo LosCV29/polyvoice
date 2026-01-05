@@ -222,8 +222,6 @@ DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 # NATIVE INTENTS (with LLM fallback)
 # =============================================================================
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
-CONF_CUSTOM_EXCLUDED_INTENTS: Final = "custom_excluded_intents"
-CONF_ENABLE_ASSIST: Final = "enable_assist"
 
 DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassGetState",           # Use check_device_status for richer responses
@@ -233,27 +231,51 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassTimerStatus",        # Let LLM handle
     "HassSetPosition",        # Use control_device for blinds/covers
 ]
-DEFAULT_CUSTOM_EXCLUDED_INTENTS: Final = ""
-DEFAULT_ENABLE_ASSIST: Final = True
 
+# Complete list of Home Assistant native intents (alphabetically sorted)
 ALL_NATIVE_INTENTS: Final = [
+    "HassBroadcast",
+    "HassCancelAllTimers",
+    "HassCancelTimer",
     "HassClimateGetTemperature",
     "HassClimateSetTemperature",
+    "HassCloseCover",
+    "HassDecreaseTimer",
+    "HassFanSetSpeed",
+    "HassGetCurrentDate",
+    "HassGetCurrentTime",
     "HassGetState",
+    "HassGetWeather",
+    "HassHumidifierMode",
+    "HassHumidifierSetpoint",
+    "HassIncreaseTimer",
+    "HassLawnMowerDock",
+    "HassLawnMowerStartMowing",
     "HassLightSet",
+    "HassListAddItem",
+    "HassListCompleteItem",
     "HassMediaNext",
     "HassMediaPause",
+    "HassMediaPlayerMute",
+    "HassMediaPlayerUnmute",
     "HassMediaPrevious",
+    "HassMediaSearchAndPlay",
     "HassMediaUnpause",
     "HassNevermind",
+    "HassOpenCover",
+    "HassPauseTimer",
+    "HassRespond",
     "HassSetPosition",
     "HassSetVolume",
-    "HassTimerCancel",
-    "HassTimerStart",
+    "HassSetVolumeRelative",
+    "HassShoppingListAddItem",
+    "HassShoppingListCompleteItem",
+    "HassStartTimer",
     "HassTimerStatus",
     "HassToggle",
     "HassTurnOff",
     "HassTurnOn",
+    "HassUnpauseTimer",
     "HassVacuumReturnToBase",
     "HassVacuumStart",
 ]

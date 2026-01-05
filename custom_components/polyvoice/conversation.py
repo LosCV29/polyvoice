@@ -49,9 +49,8 @@ from .const import (
     DEFAULT_PROVIDER,
     DEFAULT_API_KEY,
     # Native intents
-    CONF_CUSTOM_EXCLUDED_INTENTS,
+    CONF_EXCLUDED_INTENTS,
     CONF_SYSTEM_PROMPT,
-    CONF_ENABLE_ASSIST,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
     # External API keys
@@ -87,9 +86,7 @@ from .const import (
     DEFAULT_BLINDS_ENTITIES,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_CUSTOM_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
-    DEFAULT_ENABLE_ASSIST,
     DEFAULT_ENABLE_WEATHER,
     DEFAULT_ENABLE_CALENDAR,
     DEFAULT_ENABLE_CAMERAS,
@@ -347,22 +344,12 @@ class LMStudioConversationEntity(ConversationEntity):
             # For Anthropic and Google, we'll use aiohttp directly
             self.client = None
 
-        self.enable_assist = config.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST)
-        if self.enable_assist:
-            self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
-        else:
-            self._attr_supported_features = 0
+        # Always enable conversation control features
+        self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
 
-        # ALWAYS use default excluded intents (hardcoded) - UI can only ADD more, not remove
-        self.excluded_intents = set(DEFAULT_EXCLUDED_INTENTS)
-
-        # Add any custom excluded intents from UI config
-        custom_excluded = config.get(CONF_CUSTOM_EXCLUDED_INTENTS, DEFAULT_CUSTOM_EXCLUDED_INTENTS)
-        if custom_excluded:
-            custom_list = [i.strip() for i in custom_excluded.split(",") if i.strip()]
-            self.excluded_intents.update(custom_list)
-
-        _LOGGER.warning("=== EXCLUDED INTENTS (hardcoded + custom) === %s", self.excluded_intents)
+        # Excluded intents - from UI dropdown (defaults to DEFAULT_EXCLUDED_INTENTS)
+        self.excluded_intents = set(config.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS))
+        _LOGGER.debug("Excluded intents configured: %s", self.excluded_intents)
 
         self.system_prompt = config.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
         

@@ -45,8 +45,6 @@ from .const import (
     DEFAULT_TOP_P,
     # Native intents
     CONF_EXCLUDED_INTENTS,
-    CONF_CUSTOM_EXCLUDED_INTENTS,
-    CONF_ENABLE_ASSIST,
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -85,8 +83,6 @@ from .const import (
     CONF_THERMOSTAT_USE_CELSIUS,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_CUSTOM_EXCLUDED_INTENTS,
-    DEFAULT_ENABLE_ASSIST,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_LATITUDE,
     DEFAULT_CUSTOM_LONGITUDE,
@@ -682,14 +678,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             if CONF_THERMOSTAT_USE_CELSIUS in user_input:
                 processed_input[CONF_THERMOSTAT_USE_CELSIUS] = user_input[CONF_THERMOSTAT_USE_CELSIUS]
 
-            # Handle excluded intents
-            if CONF_EXCLUDED_INTENTS in user_input:
-                processed_input[CONF_EXCLUDED_INTENTS] = user_input[CONF_EXCLUDED_INTENTS]
-
-            # Handle custom excluded intents
-            if CONF_CUSTOM_EXCLUDED_INTENTS in user_input:
-                processed_input[CONF_CUSTOM_EXCLUDED_INTENTS] = user_input[CONF_CUSTOM_EXCLUDED_INTENTS]
-
             new_options = {**self._entry.options, **processed_input}
             return self.async_create_entry(title="", data=new_options)
 
@@ -995,7 +983,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_intents(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle native intents configuration."""
+        """Handle excluded intents configuration."""
         if user_input is not None:
             new_options = {**self._entry.options, **user_input}
             return self.async_create_entry(title="", data=new_options)
@@ -1007,10 +995,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_ENABLE_ASSIST,
-                        default=current.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST),
-                    ): cv.boolean,
-                    vol.Optional(
                         CONF_EXCLUDED_INTENTS,
                         default=current.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS),
                     ): selector.SelectSelector(
@@ -1020,10 +1004,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Optional(
-                        CONF_CUSTOM_EXCLUDED_INTENTS,
-                        default=current.get(CONF_CUSTOM_EXCLUDED_INTENTS, DEFAULT_CUSTOM_EXCLUDED_INTENTS),
-                    ): str,
                 }
             ),
         )
