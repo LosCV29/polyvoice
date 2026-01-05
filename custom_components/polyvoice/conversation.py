@@ -917,14 +917,14 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle, mute, unmute. Supports fuzzy commands: 'next/skip/forward'→skip_next, 'back/previous'→skip_previous, 'unpause/continue'→resume. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Use simple action words like 'next', 'previous', 'pause', 'play'. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer", "shuffle", "mute", "unmute"],
-                                "description": "The music action to perform. Fuzzy matching supported: next/skip/forward→skip_next, back/previous→skip_previous, unpause/continue→resume."
+                                "enum": ["play", "start", "pause", "hold", "resume", "unpause", "continue", "stop", "end", "next", "skip", "forward", "skip_next", "previous", "back", "prev", "skip_previous", "what_playing", "now_playing", "current", "transfer", "move", "shuffle", "mute", "silence", "unmute"],
+                                "description": "The music action: play, pause, resume/unpause/continue, stop, next/skip/forward, previous/back/prev, what_playing/now_playing, transfer/move, shuffle, mute/silence, unmute"
                             },
                             "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
@@ -3963,32 +3963,26 @@ class LMStudioConversationEntity(ConversationEntity):
             room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
 
-            # Fuzzy action mapping for natural language variations
+            # Fuzzy action mapping - normalize all variations to canonical actions
             action_aliases = {
                 # Play variations
                 "start": "play", "begin": "play",
                 # Pause variations
                 "hold": "pause", "wait": "pause",
                 # Resume variations
-                "unpause": "resume", "continue": "resume", "go": "resume", "carry on": "resume",
+                "unpause": "resume", "continue": "resume", "go": "resume",
                 # Stop variations
                 "end": "stop", "quit": "stop", "off": "stop",
                 # Skip next variations
                 "next": "skip_next", "skip": "skip_next", "forward": "skip_next",
-                "next track": "skip_next", "next song": "skip_next", "skip track": "skip_next",
                 # Skip previous variations
                 "previous": "skip_previous", "back": "skip_previous", "prev": "skip_previous",
-                "last": "skip_previous", "previous track": "skip_previous", "previous song": "skip_previous",
-                "go back": "skip_previous", "last track": "skip_previous", "last song": "skip_previous",
                 # What's playing variations
-                "now playing": "what_playing", "current": "what_playing", "whats playing": "what_playing",
-                "what is playing": "what_playing", "currently playing": "what_playing",
+                "now_playing": "what_playing", "current": "what_playing",
                 # Transfer variations
-                "move": "transfer", "switch": "transfer",
+                "move": "transfer",
                 # Mute variations
-                "silence": "mute", "quiet": "mute", "hush": "mute",
-                # Unmute variations
-                "unsilence": "unmute", "sound on": "unmute", "volume on": "unmute",
+                "silence": "mute",
             }
 
             # Apply fuzzy mapping
