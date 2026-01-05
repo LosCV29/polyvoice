@@ -219,15 +219,13 @@ DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS: Final = 30
 DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 
 # =============================================================================
-# NATIVE INTENTS
+# NATIVE INTENTS (with LLM fallback)
 # =============================================================================
-CONF_USE_NATIVE_INTENTS: Final = "use_native_intents"
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
 CONF_CUSTOM_EXCLUDED_INTENTS: Final = "custom_excluded_intents"
 CONF_ENABLE_ASSIST: Final = "enable_assist"
 CONF_LLM_HASS_API: Final = "llm_hass_api"
 
-DEFAULT_USE_NATIVE_INTENTS: Final = True
 DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassGetState",
     "HassNevermind",

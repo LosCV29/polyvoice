@@ -49,7 +49,6 @@ from .const import (
     DEFAULT_PROVIDER,
     DEFAULT_API_KEY,
     # Native intents
-    CONF_USE_NATIVE_INTENTS,
     CONF_EXCLUDED_INTENTS,
     CONF_CUSTOM_EXCLUDED_INTENTS,
     CONF_SYSTEM_PROMPT,
@@ -409,8 +408,6 @@ class LMStudioConversationEntity(ConversationEntity):
             # For Anthropic and Google, we'll use aiohttp directly
             self.client = None
 
-        self.use_native_intents = config.get(CONF_USE_NATIVE_INTENTS, True)
-        
         self.enable_assist = config.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST)
         if self.enable_assist:
             self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
@@ -646,104 +643,7 @@ class LMStudioConversationEntity(ConversationEntity):
             if not self.enable_calendar and 'get_calendar_events' in line_lower:
                 continue
 
-            # Skip "let native HA handle" instructions when in pure LLM mode
-            if not self.use_native_intents and 'native' in line_lower and 'handle' in line_lower:
-                continue
-
             filtered_lines.append(line)
-
-        # Add LLM device control instructions and FULL device list when native intents are disabled
-        if not self.use_native_intents:
-            filtered_lines.append("")
-            filtered_lines.append("=" * 70)
-            filtered_lines.append("PURE LLM MODE - YOU CONTROL ALL SMART HOME DEVICES")
-            filtered_lines.append("=" * 70)
-            filtered_lines.append("")
-            filtered_lines.append("CRITICAL: NEVER say 'I can't do that'. ALWAYS call control_device!")
-            filtered_lines.append("")
-            filtered_lines.append("*** ENTITY ID WARNING ***")
-            filtered_lines.append("Numbers in entity_id often DO NOT MATCH numbers in friendly name!")
-            filtered_lines.append("Example: cover.blind_2 could be 'Shade 1', light.lamp_3 could be 'Lamp 1'")
-            filtered_lines.append("ALWAYS look up the EXACT entity_id from the DEVICE LIST below.")
-            filtered_lines.append("NEVER guess entity_ids - find the friendly name, use its entity_id!")
-            filtered_lines.append("")
-            filtered_lines.append("HOW TO MATCH DEVICES:")
-            filtered_lines.append("1. User says a device name -> find matching friendly name in device list")
-            filtered_lines.append("2. Use the entity_id shown BEFORE the = sign")
-            filtered_lines.append("3. 'shade/blind/curtain' = cover.xxx entities")
-            filtered_lines.append("4. 'light/lamp' = light.xxx entities")
-            filtered_lines.append("5. Check (aka: ...) aliases for alternate names")
-            filtered_lines.append("")
-            filtered_lines.append("SHADE/BLIND COMMANDS:")
-            filtered_lines.append("  open/raise/up -> action='open'")
-            filtered_lines.append("  close/lower/down -> action='close'")
-            filtered_lines.append("  stop/halt -> action='stop'")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("CONTROL_DEVICE ACTIONS BY TYPE")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("")
-            filtered_lines.append("LIGHTS:")
-            filtered_lines.append("  turn_on, turn_off, toggle")
-            filtered_lines.append("  brightness=0-100 (with turn_on)")
-            filtered_lines.append("  color='red'/'blue'/etc OR color_temp=2700-6500 (Kelvin)")
-            filtered_lines.append("")
-            filtered_lines.append("SWITCHES/FANS/OUTLETS:")
-            filtered_lines.append("  turn_on, turn_off, toggle")
-            filtered_lines.append("  fan_speed='low'/'medium'/'high' (fans only)")
-            filtered_lines.append("")
-            filtered_lines.append("COVERS (blinds/shades/garage):")
-            filtered_lines.append("  open, close, stop, toggle")
-            filtered_lines.append("  position=0-100 (0=closed, 100=open)")
-            filtered_lines.append("  preset/favorite (go to saved position)")
-            filtered_lines.append("")
-            filtered_lines.append("LOCKS:")
-            filtered_lines.append("  lock, unlock")
-            filtered_lines.append("")
-            filtered_lines.append("MEDIA PLAYERS:")
-            filtered_lines.append("  play, pause, stop, next, previous")
-            filtered_lines.append("  volume=0-100, mute, unmute")
-            filtered_lines.append("  media_content='song/station name', media_type='music'/'playlist'")
-            filtered_lines.append("")
-            filtered_lines.append("CLIMATE/THERMOSTATS:")
-            filtered_lines.append("  set_temperature, temperature=XX (degrees)")
-            filtered_lines.append("  hvac_mode='heat'/'cool'/'auto'/'off'")
-            filtered_lines.append("")
-            filtered_lines.append("VACUUMS:")
-            filtered_lines.append("  start, stop, dock, locate, return_home")
-            filtered_lines.append("")
-            filtered_lines.append("SCENES/SCRIPTS:")
-            filtered_lines.append("  activate (or turn_on)")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("NATURAL LANGUAGE PATTERNS -> TOOL CALLS")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("")
-            filtered_lines.append("'Turn on/off [device]' -> action='turn_on'/'turn_off', entity_id='...'")
-            filtered_lines.append("'Dim [light] to 50%' -> action='turn_on', brightness=50, entity_id='...'")
-            filtered_lines.append("'Make it warmer/cooler' -> action='set_temperature', temperature=+/-2 from current")
-            filtered_lines.append("'Set temp to 72' -> action='set_temperature', temperature=72")
-            filtered_lines.append("'Lock/unlock [door]' -> action='lock'/'unlock', entity_id='...'")
-            filtered_lines.append("'Open/close [cover]' -> action='open'/'close', entity_id='...'")
-            filtered_lines.append("'Set shades to 50%' -> action='set_position', position=50, entity_id='...'")
-            filtered_lines.append("'Favorite position' -> action='preset', entity_id='...'")
-            filtered_lines.append("'Pause the music' -> action='pause', entity_id='media_player.xxx'")
-            filtered_lines.append("'Volume up/down' -> action='volume_up'/'volume_down'")
-            filtered_lines.append("'Set volume to 50' -> action='set_volume', volume=50")
-            filtered_lines.append("'Start the vacuum' -> action='start', entity_id='vacuum.xxx'")
-            filtered_lines.append("'Send vacuum home' -> action='dock'")
-            filtered_lines.append("'Turn off everything' -> area='...', domain='all', action='turn_off'")
-            filtered_lines.append("'All lights off in kitchen' -> area='Kitchen', domain='light', action='turn_off'")
-            filtered_lines.append("'Activate movie mode' -> action='activate', entity_id='scene.movie_mode'")
-            filtered_lines.append("")
-            filtered_lines.append("-" * 50)
-            filtered_lines.append("YOUR COMPLETE DEVICE LIST")
-            filtered_lines.append("-" * 50)
-
-            # Inject the FULL device list
-            device_list = self._discover_all_devices()
-            filtered_lines.append(device_list)
-            filtered_lines.append("")
 
         return '\n'.join(filtered_lines)
 
@@ -1345,82 +1245,81 @@ class LMStudioConversationEntity(ConversationEntity):
                 }
             })
 
-        # ===== DEVICE CONTROL (Pure LLM Mode - when native intents disabled) =====
-        if not self.use_native_intents:
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": "control_device",
-                    "description": "Control ANY smart home device including BLINDS, SHADES, CURTAINS, lights, switches, locks, fans. ALWAYS use this for blinds/shades/curtains - actions: open, close, stop, set_position. 'raise/lower the shade' = open/close cover. 'stop the blind' = stop cover. For shades/blinds: find cover.xxx entities. Match room name to friendly name (e.g. 'bedroom shade' -> 'Master Shade' -> cover.roller_blind_X).",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "entity_id": {
-                                "type": "string",
-                                "description": "Exact entity ID. For shades/blinds use cover.xxx, for lights use light.xxx"
-                            },
-                            "entity_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Multiple entity IDs at once"
-                            },
-                            "device": {
-                                "type": "string",
-                                "description": "Fuzzy name: 'living room shade', 'master shade', 'bedroom light'"
-                            },
-                            "area": {
-                                "type": "string",
-                                "description": "Control all devices in area"
-                            },
-                            "domain": {
-                                "type": "string",
-                                "enum": ["light", "switch", "lock", "cover", "fan", "media_player", "climate", "vacuum", "scene", "script", "all"],
-                                "description": "Device type filter for area"
-                            },
-                            "action": {
-                                "type": "string",
-                                "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position", "play", "pause", "next", "previous", "volume_up", "volume_down", "set_volume", "mute", "unmute", "set_temperature", "start", "dock", "locate", "return_home", "activate"],
-                                "description": "Action to perform. For BLINDS/SHADES: 'open'=raise, 'close'=lower, 'stop'=halt movement, 'favorite' or 'preset'=go to saved position"
-                            },
-                            "brightness": {
-                                "type": "integer",
-                                "description": "Light brightness 0-100"
-                            },
-                            "color": {
-                                "type": "string",
-                                "description": "Light color name (red, blue, warm, cool, etc.)"
-                            },
-                            "color_temp": {
-                                "type": "integer",
-                                "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"
-                            },
-                            "position": {
-                                "type": "integer",
-                                "description": "Cover position 0-100 (0=closed)"
-                            },
-                            "volume": {
-                                "type": "integer",
-                                "description": "Volume level 0-100"
-                            },
-                            "temperature": {
-                                "type": "number",
-                                "description": "Target temperature for climate"
-                            },
-                            "hvac_mode": {
-                                "type": "string",
-                                "enum": ["heat", "cool", "auto", "off", "fan_only", "dry"],
-                                "description": "HVAC mode for climate"
-                            },
-                            "fan_speed": {
-                                "type": "string",
-                                "enum": ["low", "medium", "high", "auto"],
-                                "description": "Fan speed"
-                            }
+        # ===== DEVICE CONTROL (LLM fallback when native intents fail) =====
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "control_device",
+                "description": "Control smart home devices (lights, switches, locks, fans, blinds, shades, covers). Use this when you need to control a device. IMPORTANT: Use the 'device' parameter with the user's spoken name - it does fuzzy matching! For blinds/shades: 'raise/up'=open, 'lower/down'=close, 'stop'=halt.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "device": {
+                            "type": "string",
+                            "description": "PREFERRED: Use the device name the user said - fuzzy matching finds the right entity. Examples: 'kitchen light', 'bedroom shade', 'front door'"
                         },
-                        "required": ["action"]
-                    }
+                        "entity_id": {
+                            "type": "string",
+                            "description": "Only if you know the exact entity ID. Prefer 'device' for fuzzy matching."
+                        },
+                        "entity_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Multiple exact entity IDs"
+                        },
+                        "area": {
+                            "type": "string",
+                            "description": "Control all devices in area"
+                        },
+                        "domain": {
+                            "type": "string",
+                            "enum": ["light", "switch", "lock", "cover", "fan", "media_player", "climate", "vacuum", "scene", "script", "all"],
+                            "description": "Device type filter for area"
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["turn_on", "turn_off", "toggle", "lock", "unlock", "open", "close", "stop", "preset", "favorite", "set_position", "play", "pause", "next", "previous", "volume_up", "volume_down", "set_volume", "mute", "unmute", "set_temperature", "start", "dock", "locate", "return_home", "activate"],
+                            "description": "Action to perform. For BLINDS/SHADES: 'open'=raise, 'close'=lower, 'stop'=halt movement, 'favorite' or 'preset'=go to saved position"
+                        },
+                        "brightness": {
+                            "type": "integer",
+                            "description": "Light brightness 0-100"
+                        },
+                        "color": {
+                            "type": "string",
+                            "description": "Light color name (red, blue, warm, cool, etc.)"
+                        },
+                        "color_temp": {
+                            "type": "integer",
+                            "description": "Color temperature in Kelvin (2700=warm, 6500=cool)"
+                        },
+                        "position": {
+                            "type": "integer",
+                            "description": "Cover position 0-100 (0=closed)"
+                        },
+                        "volume": {
+                            "type": "integer",
+                            "description": "Volume level 0-100"
+                        },
+                        "temperature": {
+                            "type": "number",
+                            "description": "Target temperature for climate"
+                        },
+                        "hvac_mode": {
+                            "type": "string",
+                            "enum": ["heat", "cool", "auto", "off", "fan_only", "dry"],
+                            "description": "HVAC mode for climate"
+                        },
+                        "fan_speed": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high", "auto"],
+                            "description": "Fan speed"
+                        }
+                    },
+                    "required": ["action"]
                 }
-            })
+            }
+        })
 
         return tools
 
@@ -1435,13 +1334,12 @@ class LMStudioConversationEntity(ConversationEntity):
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        # Try native intents first if enabled
-        if self.use_native_intents:
-            native_result = await self._try_native_intent(user_input, conversation_id)
-            if native_result is not None:
-                return native_result
+        # Try native intents first, fall back to LLM if they fail
+        native_result = await self._try_native_intent(user_input, conversation_id)
+        if native_result is not None:
+            return native_result
 
-        # Use pre-built tools (cached at config load for speed!)
+        # Native intent didn't handle it - use LLM with tools (including control_device for fuzzy matching)
         tools = self._tools
 
         # SPEED OPTIMIZATION #2: Dynamic max_tokens

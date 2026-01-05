@@ -44,7 +44,6 @@ from .const import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
     # Native intents
-    CONF_USE_NATIVE_INTENTS,
     CONF_EXCLUDED_INTENTS,
     CONF_CUSTOM_EXCLUDED_INTENTS,
     CONF_ENABLE_ASSIST,
@@ -86,7 +85,6 @@ from .const import (
     CONF_THERMOSTAT_TEMP_STEP,
     CONF_THERMOSTAT_USE_CELSIUS,
     # Defaults
-    DEFAULT_USE_NATIVE_INTENTS,
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_CUSTOM_EXCLUDED_INTENTS,
     DEFAULT_ENABLE_ASSIST,
@@ -1010,10 +1008,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="intents",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_USE_NATIVE_INTENTS,
-                        default=current.get(CONF_USE_NATIVE_INTENTS, DEFAULT_USE_NATIVE_INTENTS),
-                    ): cv.boolean,
                     vol.Optional(
                         CONF_ENABLE_ASSIST,
                         default=current.get(CONF_ENABLE_ASSIST, DEFAULT_ENABLE_ASSIST),

@@ -123,16 +123,15 @@
         }
       },
       "intents": {
-        "title": "Native Intent Settings",
-        "description": "ON = HA handles device commands (rigid matching). OFF = Pure LLM mode (fuzzy matching, natural language)",
+        "title": "Intent Settings",
+        "description": "Configure how device commands are processed. Native intents are tried first, with LLM fallback for fuzzy matching.",
         "data": {
-          "use_native_intents": "Use Native Intents (OFF = Pure LLM Mode)",
           "enable_assist": "Enable Assist Control",
-          "excluded_intents": "Excluded Intents",
+          "excluded_intents": "Excluded Intents (always use LLM)",
           "custom_excluded_intents": "Additional Excluded Intents (comma-separated)"
         },
         "data_description": {
-          "use_native_intents": "When ON, Home Assistant's built-in intent system handles device commands. When OFF, the LLM handles ALL commands with fuzzy device matching - say 'make it dark' and it understands to turn off lights!"
+          "excluded_intents": "These intents will skip native handling and always use the LLM for fuzzy matching."
         }
       },
       "advanced": {
