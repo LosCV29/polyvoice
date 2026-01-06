@@ -4097,13 +4097,29 @@ class LMStudioConversationEntity(ConversationEntity):
                         return {"error": f"Unknown room: {room}. Available: {', '.join(players.keys())}"}
 
                     import time
+                    import asyncio
                     _LOGGER.warning(">>> PLAY COMMAND <<< Time: %.3f Query: %s Player: %s", time.time(), query, target_players)
 
                     for player in target_players:
+                        # FIX: Stop current playback and wait for Chromecast to settle
+                        # This prevents the double-skip bug when replacing queue
+                        _LOGGER.warning(">>> STOPPING current playback <<< Time: %.3f", time.time())
+                        try:
+                            await self.hass.services.async_call(
+                                "media_player", "media_stop",
+                                {"entity_id": player},
+                                blocking=True
+                            )
+                        except Exception:
+                            pass  # Ignore if nothing playing
+
+                        # Give Chromecast time to fully stop and clear queue
+                        await asyncio.sleep(1.0)
+
                         _LOGGER.warning(">>> CALLING play_media <<< Time: %.3f", time.time())
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
-                            {"media_id": query, "media_type": media_type, "enqueue": "replace"},
+                            {"media_id": query, "media_type": media_type, "enqueue": "play"},
                             target={"entity_id": player},
                             blocking=True
                         )
