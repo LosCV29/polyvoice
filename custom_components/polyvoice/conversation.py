@@ -4119,7 +4119,7 @@ class LMStudioConversationEntity(ConversationEntity):
                         _LOGGER.warning(">>> CALLING play_media <<< Time: %.3f", time.time())
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
-                            {"media_id": query, "media_type": media_type, "enqueue": "play"},
+                            {"media_id": query, "media_type": media_type},
                             target={"entity_id": player},
                             blocking=True
                         )
