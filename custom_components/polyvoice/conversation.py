@@ -4312,12 +4312,23 @@ class LMStudioConversationEntity(ConversationEntity):
 
                         # Play the playlist with shuffle
                         player = target_players[0]
+
+                        # Stop current playback first to avoid Chromecast skip bug
+                        try:
+                            await self.hass.services.async_call(
+                                "media_player", "media_stop",
+                                {"entity_id": player},
+                                blocking=True
+                            )
+                        except Exception:
+                            pass
+                        await asyncio.sleep(1.0)
+
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
                             {
                                 "media_id": playlist_uri,
                                 "media_type": "playlist",
-                                "enqueue": "replace"
                             },
                             target={"entity_id": player},
                             blocking=True
