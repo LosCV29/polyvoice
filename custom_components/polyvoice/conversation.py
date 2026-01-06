@@ -343,6 +343,9 @@ class LMStudioConversationEntity(ConversationEntity):
         self.client = None
         self._client_needs_init = True
 
+        # Track last paused player for resume (Voice PE clears state on pause)
+        self._last_paused_player = None
+
         # Always enable conversation control features
         self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
 
@@ -4155,6 +4158,9 @@ class LMStudioConversationEntity(ConversationEntity):
                     _LOGGER.info("Looking for player in 'playing' state...")
                     playing = find_player_by_state("playing")
                     if playing:
+                        # Track this player for resume (Voice PE clears state on pause)
+                        self._last_paused_player = playing
+                        _LOGGER.info("Tracking paused player: %s", playing)
                         await self.hass.services.async_call("media_player", "media_pause", {"entity_id": playing})
                         return {"status": "paused", "message": f"Paused in {get_room_name(playing)}"}
                     return {"error": "No music is currently playing"}
@@ -4166,6 +4172,14 @@ class LMStudioConversationEntity(ConversationEntity):
                     if paused:
                         await self.hass.services.async_call("media_player", "media_play", {"entity_id": paused})
                         return {"status": "resumed", "message": f"Resumed in {get_room_name(paused)}"}
+
+                    # Fallback: use last paused player (Voice PE reports idle, not paused)
+                    if self._last_paused_player:
+                        _LOGGER.info("No paused player found, using tracked player: %s", self._last_paused_player)
+                        await self.hass.services.async_call("media_player", "media_play", {"entity_id": self._last_paused_player})
+                        room = get_room_name(self._last_paused_player)
+                        return {"status": "resumed", "message": f"Resumed in {room}"}
+
                     return {"error": "No paused music to resume"}
 
                 elif action == "stop":
