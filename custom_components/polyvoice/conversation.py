@@ -4037,7 +4037,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 _LOGGER.error("No players configured! room_player_mapping is empty")
                 return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping and add entries like: living room: media_player.your_player"}
 
-            # Helper: find player in a specific state (handles AirPlay quirks)
+            # Helper: find player in a specific state (handles AirPlay/Voice PE quirks)
             def find_player_by_state(target_state):
                 """Scan all players and return the one in the target state."""
                 # First pass: exact state match
@@ -4058,6 +4058,20 @@ class LMStudioConversationEntity(ConversationEntity):
                             media_title = state.attributes.get("media_title")
                             if media_title:
                                 _LOGGER.info("  Found AirPlay-style active player: %s (state=%s, title=%s)",
+                                           pid, state.state, media_title)
+                                return pid
+
+                # Third pass: for "paused", check idle players with media metadata
+                # Voice PE and some players report "idle" instead of "paused" after pause
+                if target_state == "paused":
+                    for pid in all_players:
+                        state = self.hass.states.get(pid)
+                        if state and state.state in ("idle", "off", "standby"):
+                            # Check if there's media metadata (indicates recently paused)
+                            media_title = state.attributes.get("media_title")
+                            media_content_id = state.attributes.get("media_content_id")
+                            if media_title or media_content_id:
+                                _LOGGER.info("  Found paused-as-idle player: %s (state=%s, title=%s)",
                                            pid, state.state, media_title)
                                 return pid
                 return None
