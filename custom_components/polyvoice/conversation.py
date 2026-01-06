@@ -4155,15 +4155,27 @@ class LMStudioConversationEntity(ConversationEntity):
                     # Find the player that's PLAYING and skip
                     import time
                     skip_time = time.time()
+
+                    # DEBOUNCE: Prevent double-skip within 5 seconds
+                    last_skip_key = "polyvoice_last_skip_time"
+                    last_skip = self.hass.data.get(last_skip_key, 0)
+                    time_since_last = skip_time - last_skip
+
                     _LOGGER.warning("╔══════════════════════════════════════╗")
                     _LOGGER.warning("║       SKIP_NEXT CALLED               ║")
                     _LOGGER.warning("╚══════════════════════════════════════╝")
-                    _LOGGER.warning("SKIP: Timestamp: %.3f", skip_time)
+                    _LOGGER.warning("SKIP: Timestamp: %.3f (%.1fs since last skip)", skip_time, time_since_last)
+
+                    if time_since_last < 5.0:
+                        _LOGGER.warning("SKIP: ⚠️ DEBOUNCE - Ignoring duplicate skip (only %.1fs since last)", time_since_last)
+                        return {"status": "skipped", "message": "Skipped to next track"}  # Pretend success
+
                     _LOGGER.warning("SKIP: Looking for player in 'playing' state...")
                     playing = find_player_by_state("playing")
                     if playing:
                         _LOGGER.warning("SKIP: Found player: %s", playing)
                         _LOGGER.warning("SKIP: >>> CALLING media_next_track NOW <<< at %.3f", time.time())
+                        self.hass.data[last_skip_key] = time.time()  # Record skip time BEFORE calling
                         await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
                         _LOGGER.warning("SKIP: >>> media_next_track COMPLETED <<< at %.3f", time.time())
                         _LOGGER.warning("SKIP: Returning success response")
