@@ -395,22 +395,9 @@ class LMStudioConversationEntity(ConversationEntity):
         _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
-        # Auto-exclude ALL media intents when control_music is enabled (pure LLM for music)
-        # Prevents race condition: native intent fires, then LLM fires 3-4 sec later = double actions
-        if self.enable_music and self.room_player_mapping:
-            media_intents_to_exclude = {
-                "HassMediaNext",
-                "HassMediaPause",
-                "HassMediaPrevious",
-                "HassMediaUnpause",
-                "HassMediaSearchAndPlay",
-                "HassMediaPlayerMute",
-                "HassMediaPlayerUnmute",
-                "HassSetVolume",
-                "HassSetVolumeRelative",
-            }
-            self.excluded_intents.update(media_intents_to_exclude)
-            _LOGGER.info("Pure LLM music mode: excluded all native media intents")
+        # Let native HA intents handle simple media commands (skip, pause, play)
+        # control_music tool is only for complex commands like "play Taylor Swift in living room"
+        _LOGGER.info("Native HA intents will handle media control (skip, pause, resume, etc.)")
 
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
@@ -955,7 +942,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Play music via Music Assistant - use ONLY for 'play [artist/song] in [room]' or 'transfer music to [room]' commands. Rooms: {rooms_list}. Do NOT use for skip/pause/resume - let native Home Assistant handle those. Actions: play, what_playing, transfer, shuffle.",
                     "parameters": {
                         "type": "object",
                         "properties": {
