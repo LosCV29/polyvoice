@@ -34,21 +34,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up PolyVoice from a config entry."""
-    import time
-
     hass.data.setdefault(DOMAIN, {})
 
     config = {**entry.data, **entry.options}
     hass.data[DOMAIN][entry.entry_id] = {"config": config}
-
-    # Monitor ALL media_next_track calls
-    async def monitor_skip(event):
-        data = event.data
-        if data.get("domain") == "media_player" and data.get("service") == "media_next_track":
-            target = data.get("service_data", {}).get("entity_id", "unknown")
-            _LOGGER.warning(">>> SKIP DETECTED <<< Time: %.3f Target: %s", time.time(), target)
-
-    hass.bus.async_listen("call_service", monitor_skip)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
