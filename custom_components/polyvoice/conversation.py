@@ -1119,6 +1119,19 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
         try:
+            # PURE LLM MUSIC MODE: Skip native handling entirely for music commands
+            # This prevents double-execution (native runs THEN we check exclusions = too late)
+            if self.enable_music and self.room_player_mapping:
+                music_keywords = [
+                    "play ", "pause", "resume", "skip", "next", "previous",
+                    "stop music", "stop the music", "volume", "mute", "unmute",
+                    "shuffle", "what's playing", "what is playing", "now playing"
+                ]
+                text_lower = user_input.text.lower()
+                if any(kw in text_lower for kw in music_keywords):
+                    _LOGGER.info("PURE LLM MUSIC: Skipping native intent for music command: %s", user_input.text[:50])
+                    return None
+
             # Use HA's default conversation agent to parse and handle intent
             result = await conversation.async_converse(
                 hass=self.hass,
