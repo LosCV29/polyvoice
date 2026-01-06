@@ -43,8 +43,6 @@ from .const import (
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
-    # Native intents
-    CONF_EXCLUDED_INTENTS,
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -81,7 +79,6 @@ from .const import (
     CONF_THERMOSTAT_TEMP_STEP,
     CONF_THERMOSTAT_USE_CELSIUS,
     # Defaults
-    DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_LATITUDE,
     DEFAULT_CUSTOM_LONGITUDE,
@@ -118,7 +115,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
-    ALL_NATIVE_INTENTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -443,7 +439,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "blinds": "Blinds/Shades Control",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
-                "intents": "Excluded Intents",
                 "advanced": "System Prompt",
             },
         )
@@ -1082,34 +1077,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={
                 "location_note": "Leave as 0 to use Home Assistant's configured location",
             },
-        )
-
-    async def async_step_intents(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle excluded intents configuration."""
-        if user_input is not None:
-            new_options = {**self._entry.options, **user_input}
-            return self.async_create_entry(title="", data=new_options)
-
-        current = {**self._entry.data, **self._entry.options}
-
-        return self.async_show_form(
-            step_id="intents",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_EXCLUDED_INTENTS,
-                        default=current.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=ALL_NATIVE_INTENTS,
-                            multiple=True,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                }
-            ),
         )
 
     async def async_step_advanced(
