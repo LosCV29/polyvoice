@@ -35,30 +35,18 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up PolyVoice from a config entry."""
     import time
-    import traceback
 
     hass.data.setdefault(DOMAIN, {})
 
     config = {**entry.data, **entry.options}
     hass.data[DOMAIN][entry.entry_id] = {"config": config}
 
-    # ========== GLOBAL MEDIA_NEXT_TRACK MONITOR ==========
-    # This catches ALL calls to media_next_track from ANY source
-    async def monitor_service_calls(call):
-        """Monitor all service calls to catch double-skip source."""
-        if call.domain == "media_player" and call.service in ("media_next_track", "media_previous_track"):
-            stack = ''.join(traceback.format_stack()[-8:-1])
-            _LOGGER.warning("╔══════════════════════════════════════════════════════════╗")
-            _LOGGER.warning("║  🔍 GLOBAL MONITOR: %s.%s CALLED  ║", call.domain, call.service)
-            _LOGGER.warning("╚══════════════════════════════════════════════════════════╝")
-            _LOGGER.warning("MONITOR: Timestamp: %.3f", time.time())
-            _LOGGER.warning("MONITOR: Target: %s", call.data.get("entity_id", "unknown"))
-            _LOGGER.warning("MONITOR: Call stack:\n%s", stack)
+    # Monitor ALL media_next_track calls
+    async def monitor_skip(call):
+        if call.domain == "media_player" and call.service == "media_next_track":
+            _LOGGER.warning(">>> SKIP DETECTED <<< Time: %.3f Target: %s", time.time(), call.data.get("entity_id"))
 
-    # Register listener for ALL service calls
-    hass.bus.async_listen("call_service", monitor_service_calls)
-    _LOGGER.warning("🔍 PolyVoice: GLOBAL media_next_track monitor ACTIVE - will catch ALL skip calls")
-    # ========================================================
+    hass.bus.async_listen("call_service", monitor_skip)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
