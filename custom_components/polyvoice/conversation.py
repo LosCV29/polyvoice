@@ -338,31 +338,10 @@ class LMStudioConversationEntity(ConversationEntity):
             base_url = PROVIDER_BASE_URLS.get(self.provider, "http://localhost:1234/v1")
         self.base_url = base_url
 
-        # Create client for OpenAI-compatible providers
-        if self.provider == PROVIDER_AZURE:
-            # Azure OpenAI uses a different client with specific configuration
-            # Extract the azure endpoint from the base_url
-            # Expected format: https://{resource}.openai.azure.com/openai/deployments/{deployment}
-            # or just: https://{resource}.openai.azure.com
-            azure_endpoint = self.base_url
-            if "/openai/deployments/" in azure_endpoint:
-                azure_endpoint = azure_endpoint.split("/openai/deployments/")[0]
-            self.client = AsyncAzureOpenAI(
-                azure_endpoint=azure_endpoint,
-                api_key=self.api_key,
-                api_version="2024-02-01",
-            )
-        elif self.provider in OPENAI_COMPATIBLE_PROVIDERS:
-            # Standard OpenAI-compatible providers (LM Studio, OpenAI, Groq, OpenRouter, Ollama)
-            self.client = AsyncOpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key if self.api_key else "ollama",  # Ollama doesn't require auth
-                timeout=60.0,  # 60 second timeout to prevent hanging
-                max_retries=2,  # Retry failed requests up to 2 times
-            )
-        else:
-            # For Anthropic and Google, we'll use aiohttp directly
-            self.client = None
+        # Client will be created in async_added_to_hass to avoid blocking the event loop
+        # (SSL certificate loading is a blocking operation)
+        self.client = None
+        self._client_needs_init = True
 
         # Always enable conversation control features
         self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
@@ -600,16 +579,58 @@ class LMStudioConversationEntity(ConversationEntity):
         self.entry.async_on_unload(
             self.entry.add_update_listener(self._async_entry_updated)
         )
-        
+
         # Get shared aiohttp session (HUGE perf boost - reuses TCP connections!)
         self._session = async_get_clientsession(self.hass)
-        
+
+        # Initialize OpenAI client in executor to avoid blocking (SSL cert loading blocks)
+        if self._client_needs_init:
+            await self._async_init_client()
+
         # Register usage tracking sensors
         self._update_usage_sensors()
+
+    async def _async_init_client(self) -> None:
+        """Initialize the OpenAI client in an executor to avoid blocking the event loop."""
+        if self.provider == PROVIDER_AZURE:
+            self.client = await self.hass.async_add_executor_job(
+                self._create_azure_client
+            )
+        elif self.provider in OPENAI_COMPATIBLE_PROVIDERS:
+            self.client = await self.hass.async_add_executor_job(
+                self._create_openai_client
+            )
+        else:
+            # For Anthropic and Google, we use aiohttp directly
+            self.client = None
+        self._client_needs_init = False
+
+    def _create_azure_client(self) -> AsyncAzureOpenAI:
+        """Create Azure OpenAI client (sync, for executor)."""
+        azure_endpoint = self.base_url
+        if "/openai/deployments/" in azure_endpoint:
+            azure_endpoint = azure_endpoint.split("/openai/deployments/")[0]
+        return AsyncAzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            api_key=self.api_key,
+            api_version="2024-02-01",
+        )
+
+    def _create_openai_client(self) -> AsyncOpenAI:
+        """Create OpenAI-compatible client (sync, for executor)."""
+        return AsyncOpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key if self.api_key else "ollama",
+            timeout=60.0,
+            max_retries=2,
+        )
 
     async def _async_entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Handle config entry update."""
         self._update_from_config({**entry.data, **entry.options})
+        # Reinitialize client with new config
+        if self._client_needs_init:
+            await self._async_init_client()
         self.async_write_ha_state()
 
     def _update_usage_sensors(self) -> None:

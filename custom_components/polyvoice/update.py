@@ -47,26 +47,31 @@ class PolyVoiceUpdateEntity(UpdateEntity):
         self.hass = hass
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_update"
-        self._installed_version: str | None = None
+        self._installed_version: str | None = "unknown"
         self._latest_version: str | None = None
         self._release_url: str | None = None
         self._release_notes: str | None = None
 
-        # Load current version from manifest
-        self._load_installed_version()
+    async def async_added_to_hass(self) -> None:
+        """Load installed version when entity is added to hass."""
+        await super().async_added_to_hass()
+        # Load version in executor to avoid blocking the event loop
+        self._installed_version = await self.hass.async_add_executor_job(
+            self._load_installed_version_sync
+        )
 
-    def _load_installed_version(self) -> None:
-        """Load the installed version from manifest.json."""
+    def _load_installed_version_sync(self) -> str:
+        """Load the installed version from manifest.json (sync, for executor)."""
         try:
             import json
             from pathlib import Path
             manifest_path = Path(__file__).parent / "manifest.json"
             with open(manifest_path) as f:
                 manifest = json.load(f)
-                self._installed_version = manifest.get("version", "unknown")
+                return manifest.get("version", "unknown")
         except Exception as err:
             _LOGGER.error("Failed to load manifest.json: %s", err)
-            self._installed_version = "unknown"
+            return "unknown"
 
     @property
     def installed_version(self) -> str | None:
