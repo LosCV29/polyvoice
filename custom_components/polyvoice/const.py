@@ -300,7 +300,7 @@ INTENT_CATEGORIES: Final = {
                     "HassSetVolume", "HassSetVolumeRelative"}),
         "keywords": frozenset(["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
                      "mute", "unmute", "volume", "louder", "quieter"]),
-        "phrases": ["turn up", "turn down"],  # Multi-word phrases need substring match
+        "phrases": ["turn up", "turn down", "skip track", "next track", "previous track"],  # Multi-word phrases need substring match
         "context": frozenset(["music", "song", "track", "audio", "speaker", "playing", "playlist"]),
         "bare_ok": frozenset(["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute", "play"]),
     },
