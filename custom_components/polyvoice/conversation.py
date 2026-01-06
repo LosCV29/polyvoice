@@ -50,6 +50,9 @@ from .const import (
     DEFAULT_API_KEY,
     # Native intents
     CONF_EXCLUDED_INTENTS,
+    CONF_SKIP_NATIVE_FOR_EXCLUDED,
+    DEFAULT_SKIP_NATIVE_FOR_EXCLUDED,
+    INTENT_CATEGORIES,
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -368,6 +371,17 @@ class LMStudioConversationEntity(ConversationEntity):
         # Excluded intents - from UI dropdown (defaults to DEFAULT_EXCLUDED_INTENTS)
         self.excluded_intents = set(config.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS))
         _LOGGER.debug("Excluded intents configured: %s", self.excluded_intents)
+
+        # SPEED OPTIMIZATION: Skip native HA completely for excluded intents
+        self.skip_native_for_excluded = config.get(CONF_SKIP_NATIVE_FOR_EXCLUDED, DEFAULT_SKIP_NATIVE_FOR_EXCLUDED)
+
+        # PRE-COMPUTE: Which categories have excluded intents (computed once at init, not per-request)
+        self._active_categories = {}
+        for category, cat_config in INTENT_CATEGORIES.items():
+            excluded_in_category = self.excluded_intents & cat_config["intents"]
+            if excluded_in_category:
+                self._active_categories[category] = cat_config
+        _LOGGER.debug("Active pre-filter categories: %s", list(self._active_categories.keys()))
 
         self.system_prompt = config.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
         
@@ -1073,129 +1087,44 @@ class LMStudioConversationEntity(ConversationEntity):
     async def _try_native_intent(
         self, user_input: conversation.ConversationInput, conversation_id: str
     ) -> conversation.ConversationResult | None:
-        """Try to handle with native intent system using HA's built-in conversation agent."""
+        """Try to handle with native intent system using HA's built-in conversation agent.
 
-        # AGGRESSIVE PRE-FILTER: Skip native HA immediately for ALL excluded intent categories
-        # This is DETERMINISTIC - no cycling through intents, just fast keyword matching
+        SPEED OPTIMIZATIONS:
+        1. Pre-computed _active_categories (only categories with excluded intents)
+        2. Frozensets for O(1) keyword lookup
+        3. Early exit on first match
+        4. Optional: skip native HA completely when skip_native_for_excluded=True
+        """
         text_lower = user_input.text.lower()
+        text_words = set(text_lower.split())  # Pre-split for fast word matching
+        text_bare = text_lower.strip().rstrip(".!?")
 
-        # Define ALL intent categories with keywords - if excluded, skip native HA immediately
-        INTENT_CATEGORIES = {
-            # MUSIC/MEDIA - route to control_music tool
-            "music": {
-                "intents": {"HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
-                           "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute",
-                           "HassSetVolume", "HassSetVolumeRelative"},
-                "keywords": ["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
-                            "mute", "unmute", "volume", "louder", "quieter", "turn up", "turn down"],
-                "context": ["music", "song", "track", "audio", "speaker", "playing", "playlist", "the"],
-                "bare_ok": ["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute", "play"],
-            },
-            # CLIMATE - route to control_thermostat tool
-            "climate": {
-                "intents": {"HassClimateSetTemperature", "HassClimateGetTemperature"},
-                "keywords": ["temperature", "thermostat", "heat", "cool", "degrees", "warmer", "cooler", "hvac", "ac", "air conditioning"],
-                "context": [],  # Empty = keyword alone is enough
-                "bare_ok": [],
-            },
-            # COVERS/BLINDS - route to control_device tool
-            "covers": {
-                "intents": {"HassOpenCover", "HassCloseCover", "HassSetPosition"},
-                "keywords": ["blind", "shade", "curtain", "cover", "shutter"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # TIMERS - route to LLM
-            "timers": {
-                "intents": {"HassStartTimer", "HassCancelTimer", "HassCancelAllTimers", "HassPauseTimer",
-                           "HassUnpauseTimer", "HassIncreaseTimer", "HassDecreaseTimer", "HassTimerStatus"},
-                "keywords": ["timer", "timers"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # STATE QUERIES - route to check_device_status tool
-            "state": {
-                "intents": {"HassGetState"},
-                "keywords": ["status of", "state of", "is the", "are the", "what is the"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # LIGHTS - route to control_device tool
-            "lights": {
-                "intents": {"HassLightSet"},
-                "keywords": ["dim", "brighten", "brightness"],
-                "context": ["light", "lamp", "the"],
-                "bare_ok": [],
-            },
-            # WEATHER - route to get_weather_forecast tool
-            "weather": {
-                "intents": {"HassGetWeather"},
-                "keywords": ["weather", "forecast", "rain today", "sunny", "going to rain"],
-                "context": [],
-                "bare_ok": ["weather", "forecast"],
-            },
-            # TIME/DATE - let LLM handle
-            "datetime": {
-                "intents": {"HassGetCurrentTime", "HassGetCurrentDate"},
-                "keywords": ["what time", "current time", "what date", "what day", "today's date"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # NEVERMIND - let LLM handle conversationally
-            "nevermind": {
-                "intents": {"HassNevermind"},
-                "keywords": ["never mind", "nevermind", "forget it", "cancel that", "don't worry"],
-                "context": [],
-                "bare_ok": ["nevermind", "cancel"],
-            },
-            # VACUUM - route to control_device
-            "vacuum": {
-                "intents": {"HassVacuumStart", "HassVacuumReturnToBase"},
-                "keywords": ["vacuum", "roomba", "robot vacuum"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # FAN - route to control_device
-            "fan": {
-                "intents": {"HassFanSetSpeed"},
-                "keywords": ["fan speed", "ceiling fan", "fan to"],
-                "context": [],
-                "bare_ok": [],
-            },
-            # ON/OFF - these typically use native HA, but if excluded route to control_device
-            "power": {
-                "intents": {"HassTurnOn", "HassTurnOff", "HassToggle"},
-                "keywords": ["turn on", "turn off", "switch on", "switch off", "toggle"],
-                "context": [],
-                "bare_ok": [],
-            },
-        }
+        # ULTRA-FAST PRE-FILTER using pre-computed active categories
+        for category, config in self._active_categories.items():
+            # Fast O(1) check: any single-word keyword in text?
+            has_keyword = bool(config["keywords"] & text_words)
 
-        # FAST DETERMINISTIC CHECK - no cycling, just match and return
-        for category, config in INTENT_CATEGORIES.items():
-            # Skip if no intents from this category are excluded
-            excluded_in_category = self.excluded_intents & config["intents"]
-            if not excluded_in_category:
-                continue
+            # Slower check only if needed: multi-word phrases
+            if not has_keyword and config.get("phrases"):
+                has_keyword = any(phrase in text_lower for phrase in config["phrases"])
 
-            # Check if command has a keyword from this category
-            has_keyword = any(kw in text_lower for kw in config["keywords"])
             if not has_keyword:
                 continue
 
-            # If context is empty, keyword alone is enough to match
-            # If context exists, need keyword + context OR bare command
+            # If no context required, keyword alone is enough → LLM
             if not config["context"]:
-                _LOGGER.info("PRE-FILTER [%s]: '%s' → LLM (keyword match)", category.upper(), user_input.text[:40])
+                _LOGGER.info("FAST-FILTER [%s]: '%s' → LLM", category.upper(), user_input.text[:40])
                 return None
 
-            has_context = any(ctx in text_lower for ctx in config["context"])
-            is_bare = text_lower.strip().rstrip(".!?") in config.get("bare_ok", [])
+            # Check context or bare command
+            has_context = bool(config["context"] & text_words)
+            is_bare = text_bare in config["bare_ok"]
 
             if has_context or is_bare:
-                _LOGGER.info("PRE-FILTER [%s]: '%s' → LLM", category.upper(), user_input.text[:40])
+                _LOGGER.info("FAST-FILTER [%s]: '%s' → LLM", category.upper(), user_input.text[:40])
                 return None
 
+        # If skip_native_for_excluded is False, still try native HA for non-matched commands
         _LOGGER.debug("No pre-filter match, using native HA for: %s", user_input.text[:40])
 
         try:

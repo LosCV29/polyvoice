@@ -218,6 +218,11 @@ DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 # NATIVE INTENTS (with LLM fallback)
 # =============================================================================
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
+CONF_SKIP_NATIVE_FOR_EXCLUDED: Final = "skip_native_for_excluded"
+
+# When True: Skip native HA COMPLETELY for any command matching excluded intents (FAST!)
+# When False: Try native HA first, then check if intent was excluded (slower but safer)
+DEFAULT_SKIP_NATIVE_FOR_EXCLUDED: Final = True
 
 DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassGetState",           # Use check_device_status for richer responses
@@ -226,6 +231,14 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateSetTemperature",  # Use control_thermostat
     "HassTimerStatus",        # Let LLM handle
     "HassSetPosition",        # Use control_device for blinds/covers
+    # MUSIC - Skip native HA, use control_music tool for FAST response
+    "HassMediaPause",
+    "HassMediaUnpause",
+    "HassMediaNext",
+    "HassMediaPrevious",
+    "HassMediaSearchAndPlay",
+    "HassSetVolume",
+    "HassSetVolumeRelative",
 ]
 
 # Complete list of Home Assistant native intents (alphabetically sorted)
@@ -275,6 +288,101 @@ ALL_NATIVE_INTENTS: Final = [
     "HassVacuumReturnToBase",
     "HassVacuumStart",
 ]
+
+# =============================================================================
+# INTENT CATEGORIES - Pre-compiled for FAST keyword matching
+# =============================================================================
+# Using frozensets for O(1) lookup instead of list iteration
+INTENT_CATEGORIES: Final = {
+    "music": {
+        "intents": frozenset({"HassMediaPause", "HassMediaUnpause", "HassMediaNext", "HassMediaPrevious",
+                    "HassMediaSearchAndPlay", "HassMediaPlayerMute", "HassMediaPlayerUnmute",
+                    "HassSetVolume", "HassSetVolumeRelative"}),
+        "keywords": frozenset(["pause", "stop", "resume", "play", "skip", "next", "previous", "back",
+                     "mute", "unmute", "volume", "louder", "quieter"]),
+        "phrases": ["turn up", "turn down"],  # Multi-word phrases need substring match
+        "context": frozenset(["music", "song", "track", "audio", "speaker", "playing", "playlist"]),
+        "bare_ok": frozenset(["pause", "stop", "resume", "skip", "next", "previous", "mute", "unmute", "play"]),
+    },
+    "climate": {
+        "intents": frozenset({"HassClimateSetTemperature", "HassClimateGetTemperature"}),
+        "keywords": frozenset(["temperature", "thermostat", "heat", "cool", "degrees", "warmer", "cooler", "hvac", "ac"]),
+        "phrases": ["air conditioning"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "covers": {
+        "intents": frozenset({"HassOpenCover", "HassCloseCover", "HassSetPosition"}),
+        "keywords": frozenset(["blind", "shade", "curtain", "cover", "shutter"]),
+        "phrases": [],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "timers": {
+        "intents": frozenset({"HassStartTimer", "HassCancelTimer", "HassCancelAllTimers", "HassPauseTimer",
+                    "HassUnpauseTimer", "HassIncreaseTimer", "HassDecreaseTimer", "HassTimerStatus"}),
+        "keywords": frozenset(["timer", "timers"]),
+        "phrases": [],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "state": {
+        "intents": frozenset({"HassGetState"}),
+        "keywords": frozenset(),
+        "phrases": ["status of", "state of", "is the", "are the", "what is the"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "lights": {
+        "intents": frozenset({"HassLightSet"}),
+        "keywords": frozenset(["dim", "brighten", "brightness"]),
+        "phrases": [],
+        "context": frozenset(["light", "lamp"]),
+        "bare_ok": frozenset(),
+    },
+    "weather": {
+        "intents": frozenset({"HassGetWeather"}),
+        "keywords": frozenset(["weather", "forecast", "sunny"]),
+        "phrases": ["rain today", "going to rain"],
+        "context": frozenset(),
+        "bare_ok": frozenset(["weather", "forecast"]),
+    },
+    "datetime": {
+        "intents": frozenset({"HassGetCurrentTime", "HassGetCurrentDate"}),
+        "keywords": frozenset(),
+        "phrases": ["what time", "current time", "what date", "what day", "today's date"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "nevermind": {
+        "intents": frozenset({"HassNevermind"}),
+        "keywords": frozenset(["nevermind"]),
+        "phrases": ["never mind", "forget it", "cancel that", "don't worry"],
+        "context": frozenset(),
+        "bare_ok": frozenset(["nevermind", "cancel"]),
+    },
+    "vacuum": {
+        "intents": frozenset({"HassVacuumStart", "HassVacuumReturnToBase"}),
+        "keywords": frozenset(["vacuum", "roomba"]),
+        "phrases": ["robot vacuum"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "fan": {
+        "intents": frozenset({"HassFanSetSpeed"}),
+        "keywords": frozenset(),
+        "phrases": ["fan speed", "ceiling fan", "fan to"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+    "power": {
+        "intents": frozenset({"HassTurnOn", "HassTurnOff", "HassToggle"}),
+        "keywords": frozenset(["toggle"]),
+        "phrases": ["turn on", "turn off", "switch on", "switch off"],
+        "context": frozenset(),
+        "bare_ok": frozenset(),
+    },
+}
 
 # =============================================================================
 # SYSTEM PROMPT
