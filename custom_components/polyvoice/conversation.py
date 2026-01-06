@@ -4176,32 +4176,20 @@ class LMStudioConversationEntity(ConversationEntity):
                     # Fallback: use last paused player (Voice PE reports idle, not paused)
                     if self._last_paused_player:
                         player = self._last_paused_player
-                        _LOGGER.info("No paused player found, using tracked player: %s", player)
+                        _LOGGER.warning("RESUME: No paused player found, using tracked player: %s", player)
 
-                        # Try media_player.media_play first
+                        # Try media_player.media_play
                         try:
                             await self.hass.services.async_call(
                                 "media_player", "media_play",
-                                target={"entity_id": player},
+                                {"entity_id": player},
                                 blocking=True
                             )
                             room = get_room_name(player)
+                            _LOGGER.warning("RESUME: Success via media_play on %s", player)
                             return {"status": "resumed", "message": f"Resumed in {room}"}
                         except Exception as e:
-                            _LOGGER.warning("media_play failed: %s, trying MA play", e)
-
-                        # Fallback: try Music Assistant's play command
-                        try:
-                            await self.hass.services.async_call(
-                                "music_assistant", "play_media",
-                                {"media_id": "__resume__", "media_type": "track"},
-                                target={"entity_id": player},
-                                blocking=True
-                            )
-                            room = get_room_name(player)
-                            return {"status": "resumed", "message": f"Resumed in {room}"}
-                        except Exception as e:
-                            _LOGGER.warning("MA play_media also failed: %s", e)
+                            _LOGGER.warning("RESUME: media_play failed: %s", e)
 
                         return {"error": f"Could not resume on {get_room_name(player)}"}
 
