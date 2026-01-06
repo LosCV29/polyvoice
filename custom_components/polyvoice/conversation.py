@@ -395,22 +395,6 @@ class LMStudioConversationEntity(ConversationEntity):
         _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
-        # PURE LLM MODE: Exclude ALL media intents so only control_music handles music
-        if self.enable_music and self.room_player_mapping:
-            media_intents_to_exclude = {
-                "HassMediaNext",
-                "HassMediaPause",
-                "HassMediaPrevious",
-                "HassMediaUnpause",
-                "HassMediaSearchAndPlay",
-                "HassMediaPlayerMute",
-                "HassMediaPlayerUnmute",
-                "HassSetVolume",
-                "HassSetVolumeRelative",
-            }
-            self.excluded_intents.update(media_intents_to_exclude)
-            _LOGGER.info("PURE LLM MUSIC MODE: All native media intents excluded")
-
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
@@ -1119,18 +1103,17 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> conversation.ConversationResult | None:
         """Try to handle with native intent system using HA's built-in conversation agent."""
         try:
-            # PURE LLM MUSIC MODE: Skip native handling entirely for music commands
+            # ALWAYS skip native intent for music commands - LLM handles exclusively
             # This prevents double-execution (native runs THEN we check exclusions = too late)
-            if self.enable_music and self.room_player_mapping:
-                music_keywords = [
-                    "play ", "pause", "resume", "skip", "next", "previous",
-                    "stop music", "stop the music", "volume", "mute", "unmute",
-                    "shuffle", "what's playing", "what is playing", "now playing"
-                ]
-                text_lower = user_input.text.lower()
-                if any(kw in text_lower for kw in music_keywords):
-                    _LOGGER.info("PURE LLM MUSIC: Skipping native intent for music command: %s", user_input.text[:50])
-                    return None
+            music_keywords = [
+                "play ", "pause", "resume", "skip", "next", "previous",
+                "stop music", "stop the music", "volume", "mute", "unmute",
+                "shuffle", "what's playing", "what is playing", "now playing"
+            ]
+            text_lower = user_input.text.lower()
+            if any(kw in text_lower for kw in music_keywords):
+                _LOGGER.info("LLM MUSIC: Skipping native intent for: %s", user_input.text[:50])
+                return None
 
             # Use HA's default conversation agent to parse and handle intent
             result = await conversation.async_converse(
