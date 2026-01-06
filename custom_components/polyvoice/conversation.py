@@ -4096,13 +4096,18 @@ class LMStudioConversationEntity(ConversationEntity):
                     if not target_players:
                         return {"error": f"Unknown room: {room}. Available: {', '.join(players.keys())}"}
 
+                    import time
+                    _LOGGER.warning(">>> PLAY COMMAND <<< Time: %.3f Query: %s Player: %s", time.time(), query, target_players)
+
                     for player in target_players:
+                        _LOGGER.warning(">>> CALLING play_media <<< Time: %.3f", time.time())
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
                             {"media_id": query, "media_type": media_type, "enqueue": "replace"},
                             target={"entity_id": player},
                             blocking=True
                         )
+                        _LOGGER.warning(">>> play_media DONE <<< Time: %.3f", time.time())
                         if shuffle or media_type == "genre":
                             await self.hass.services.async_call(
                                 "media_player", "shuffle_set",
