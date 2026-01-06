@@ -395,9 +395,21 @@ class LMStudioConversationEntity(ConversationEntity):
         _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
-        # Let native HA intents handle simple media commands (skip, pause, play)
-        # control_music tool is only for complex commands like "play Taylor Swift in living room"
-        _LOGGER.info("Native HA intents will handle media control (skip, pause, resume, etc.)")
+        # PURE LLM MODE: Exclude ALL media intents so only control_music handles music
+        if self.enable_music and self.room_player_mapping:
+            media_intents_to_exclude = {
+                "HassMediaNext",
+                "HassMediaPause",
+                "HassMediaPrevious",
+                "HassMediaUnpause",
+                "HassMediaSearchAndPlay",
+                "HassMediaPlayerMute",
+                "HassMediaPlayerUnmute",
+                "HassSetVolume",
+                "HassSetVolumeRelative",
+            }
+            self.excluded_intents.update(media_intents_to_exclude)
+            _LOGGER.info("PURE LLM MUSIC MODE: All native media intents excluded")
 
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
@@ -942,7 +954,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Play music via Music Assistant - use ONLY for 'play [artist/song] in [room]' or 'transfer music to [room]' commands. Rooms: {rooms_list}. Do NOT use for skip/pause/resume - let native Home Assistant handle those. Actions: play, what_playing, transfer, shuffle.",
+                    "description": f"Control ALL music playback via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle. Use this for ALL music commands including skip, pause, play, etc.",
                     "parameters": {
                         "type": "object",
                         "properties": {
