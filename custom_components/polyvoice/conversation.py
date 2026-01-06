@@ -962,11 +962,15 @@ class LMStudioConversationEntity(ConversationEntity):
             })
 
         # ===== DEVICE CONTROL (LLM fallback when native intents fail) =====
+        # Build description - exclude music playback if control_music is available
+        device_desc = "Control smart home devices (lights, switches, locks, fans, blinds, shades, covers). Use this when you need to control a device. IMPORTANT: Use the 'device' parameter with the user's spoken name - it does fuzzy matching! For blinds/shades: 'raise/up'=open, 'lower/down'=close, 'stop'=halt."
+        if self.enable_music and self.room_player_mapping:
+            device_desc += " WARNING: Do NOT use this for music playback control (skip, pause, play, next, previous) - use control_music instead!"
         tools.append({
             "type": "function",
             "function": {
                 "name": "control_device",
-                "description": "Control smart home devices (lights, switches, locks, fans, blinds, shades, covers). Use this when you need to control a device. IMPORTANT: Use the 'device' parameter with the user's spoken name - it does fuzzy matching! For blinds/shades: 'raise/up'=open, 'lower/down'=close, 'stop'=halt.",
+                "description": device_desc,
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -3278,6 +3282,26 @@ class LMStudioConversationEntity(ConversationEntity):
 
             if not action:
                 return {"error": "No action specified."}
+
+            # Block music playback commands when control_music is enabled (prevents double-skip)
+            music_playback_actions = {"play", "pause", "next", "previous", "stop"}
+            if action in music_playback_actions and self.enable_music and self.room_player_mapping:
+                # Check if this is targeting a media_player
+                is_media_player = domain_filter == "media_player"
+                if not is_media_player and direct_entity_id:
+                    is_media_player = direct_entity_id.startswith("media_player.")
+                if not is_media_player and device_name:
+                    # Check if device name matches any configured music player
+                    for room, player_id in self.room_player_mapping.items():
+                        player_state = self.hass.states.get(player_id)
+                        if player_state:
+                            friendly = player_state.attributes.get("friendly_name", "").lower()
+                            if device_name.lower() in friendly or friendly in device_name.lower():
+                                is_media_player = True
+                                break
+                if is_media_player:
+                    _LOGGER.debug("Blocking control_device music action '%s' - use control_music instead", action)
+                    return {"error": f"For music playback control ('{action}'), use the control_music function instead."}
 
             # Normalize actions
             if action == "favorite":
