@@ -334,6 +334,11 @@ class LMStudioConversationEntity(ConversationEntity):
         self._cached_system_prompt: str | None = None
         self._cached_system_prompt_date: str | None = None
 
+        # Music command debouncing - prevent double-execution from repeated triggers
+        self._last_music_command: str | None = None
+        self._last_music_command_time: datetime | None = None
+        self._music_debounce_seconds = 5  # Ignore same command within 5 seconds
+
         # Initialize config
         self._update_from_config({**config_entry.data, **config_entry.options})
 
@@ -3986,6 +3991,20 @@ class LMStudioConversationEntity(ConversationEntity):
             shuffle = arguments.get("shuffle", False)
 
             _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
+
+            # Debounce skip/previous/pause/resume to prevent double-execution
+            # from wake word re-triggering on Chromecast audio changes
+            debounce_actions = {"skip_next", "skip_previous", "pause", "resume", "stop"}
+            if action in debounce_actions:
+                now = datetime.now()
+                if (self._last_music_command == action and
+                    self._last_music_command_time and
+                    (now - self._last_music_command_time).total_seconds() < self._music_debounce_seconds):
+                    _LOGGER.info("DEBOUNCE: Ignoring duplicate '%s' command within %s seconds",
+                                action, self._music_debounce_seconds)
+                    return {"status": "debounced", "message": f"Command '{action}' ignored (duplicate)"}
+                self._last_music_command = action
+                self._last_music_command_time = now
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
