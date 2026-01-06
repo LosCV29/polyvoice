@@ -4152,64 +4152,42 @@ class LMStudioConversationEntity(ConversationEntity):
 
                 elif action == "skip_next":
                     # Find the player that's PLAYING and skip
-                    # FIX: Use Music Assistant player entity to avoid Chromecast double-skip bug
+                    # FIX: Seek to end of track to trigger natural advancement (avoids Chromecast double-skip bug)
                     _LOGGER.info("SKIP: Looking for player in 'playing' state...")
                     playing = find_player_by_state("playing")
                     if playing:
                         _LOGGER.info("SKIP: Found player: %s", playing)
+                        state = self.hass.states.get(playing)
 
-                        # Try to find corresponding Music Assistant player (avoids Chromecast bug)
-                        ma_player = None
-                        try:
-                            # Check if this IS already an MA player
-                            if "mass_" in playing:
-                                ma_player = playing
-                            else:
-                                # Look for MA player that matches this device
-                                player_name = playing.split(".")[-1]  # e.g., "pioneer_vsx_lx505_chromecast"
-                                for state in self.hass.states.async_all("media_player"):
-                                    if "mass_" in state.entity_id:
-                                        # Check if MA player is linked to this device
-                                        ma_name = state.entity_id.split("mass_")[-1]
-                                        if player_name in ma_name or ma_name in player_name:
-                                            if state.state == "playing":
-                                                ma_player = state.entity_id
-                                                break
-                        except Exception as e:
-                            _LOGGER.debug("MA player lookup failed: %s", e)
+                        # Try seek-to-end method first (avoids Chromecast double-skip bug)
+                        duration = state.attributes.get("media_duration") if state else None
+                        if duration and duration > 5:
+                            _LOGGER.info("SKIP: Using seek-to-end method (duration: %s)", duration)
+                            # Seek to 2 seconds before end - triggers natural track advancement
+                            await self.hass.services.async_call(
+                                "media_player", "media_seek",
+                                {"entity_id": playing, "seek_position": duration - 2}
+                            )
+                            return {"status": "skipped", "message": "Skipped to next track"}
 
-                        target = ma_player if ma_player else playing
-                        _LOGGER.info("SKIP: Sending to %s%s", target, " (MA player)" if ma_player else "")
-                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": target})
+                        # Fallback to standard skip if no duration available
+                        _LOGGER.info("SKIP: No duration, using media_next_track")
+                        await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
                         return {"status": "skipped", "message": "Skipped to next track"}
                     return {"error": "No music is playing to skip"}
 
                 elif action == "skip_previous":
                     # Find the player that's PLAYING and go back
-                    # FIX: Use Music Assistant player entity to avoid Chromecast double-skip bug
                     _LOGGER.info("Looking for player in 'playing' state...")
                     playing = find_player_by_state("playing")
                     if playing:
-                        # Try to find corresponding Music Assistant player (avoids Chromecast bug)
-                        ma_player = None
-                        try:
-                            if "mass_" in playing:
-                                ma_player = playing
-                            else:
-                                player_name = playing.split(".")[-1]
-                                for state in self.hass.states.async_all("media_player"):
-                                    if "mass_" in state.entity_id:
-                                        ma_name = state.entity_id.split("mass_")[-1]
-                                        if player_name in ma_name or ma_name in player_name:
-                                            if state.state == "playing":
-                                                ma_player = state.entity_id
-                                                break
-                        except Exception as e:
-                            _LOGGER.debug("MA player lookup failed: %s", e)
-
-                        target = ma_player if ma_player else playing
-                        _LOGGER.info("SKIP_PREV: Sending to %s%s", target, " (MA player)" if ma_player else "")
-                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": target})
+                        # Seek to beginning triggers previous track behavior on most players
+                        await self.hass.services.async_call(
+                            "media_player", "media_seek",
+                            {"entity_id": playing, "seek_position": 0}
+                        )
+                        # Then call previous
+                        await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": playing})
                         return {"status": "skipped", "message": "Previous track"}
                     return {"error": "No music is playing"}
 
