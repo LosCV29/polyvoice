@@ -395,8 +395,8 @@ class LMStudioConversationEntity(ConversationEntity):
         _LOGGER.debug("Music config loaded: enable_music=%s, raw_mapping='%s', parsed=%s",
                      self.enable_music, raw_mapping, self.room_player_mapping)
 
-        # Auto-exclude media intents when control_music is enabled (prevents double-skip on Chromecast)
-        # Native HassMediaNext fires first, then LLM control_music fires 3-4 sec later = double skip
+        # Auto-exclude ALL media intents when control_music is enabled (pure LLM for music)
+        # Prevents race condition: native intent fires, then LLM fires 3-4 sec later = double actions
         if self.enable_music and self.room_player_mapping:
             media_intents_to_exclude = {
                 "HassMediaNext",
@@ -404,9 +404,13 @@ class LMStudioConversationEntity(ConversationEntity):
                 "HassMediaPrevious",
                 "HassMediaUnpause",
                 "HassMediaSearchAndPlay",
+                "HassMediaPlayerMute",
+                "HassMediaPlayerUnmute",
+                "HassSetVolume",
+                "HassSetVolumeRelative",
             }
             self.excluded_intents.update(media_intents_to_exclude)
-            _LOGGER.debug("Auto-excluded media intents (music control enabled): %s", media_intents_to_exclude)
+            _LOGGER.info("Pure LLM music mode: excluded all native media intents")
 
         # Entity configuration from UI
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
