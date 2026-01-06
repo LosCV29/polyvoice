@@ -949,12 +949,12 @@ class LMStudioConversationEntity(ConversationEntity):
                                 "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "restart_track", "what_playing", "transfer", "shuffle"],
                                 "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled. Use 'restart_track' to replay the current song from the beginning (triggered by 'bring it back', 'play from beginning', 'start the song over')."
                             },
-                            "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
+                            "query": {"type": "string", "description": "What to play. For specific songs, include BOTH artist AND song name (e.g., 'Chichi Peralta Procura', 'Bad Bunny Titi Me Pregunto'). For artists, just the name."},
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
                             "media_type": {
                                 "type": "string",
                                 "enum": ["artist", "album", "track", "playlist", "genre"],
-                                "description": "Type of media (default: artist)"
+                                "description": "IMPORTANT: Use 'track' when user asks for a SPECIFIC SONG by name. Use 'artist' only when they want music BY an artist (no specific song). Examples: 'play Procura by Chichi Peralta' = track, 'play Chichi Peralta' = artist, 'play Despacito' = track."
                             },
                             "shuffle": {"type": "boolean", "description": "Enable shuffle mode"}
                         },
