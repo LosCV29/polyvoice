@@ -4114,7 +4114,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             pass  # Ignore if nothing playing
 
                         # Give Chromecast time to fully stop and clear queue
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(2.0)
 
                         _LOGGER.warning(">>> CALLING play_media <<< Time: %.3f", time.time())
                         await self.hass.services.async_call(
@@ -4322,7 +4322,7 @@ class LMStudioConversationEntity(ConversationEntity):
                             )
                         except Exception:
                             pass
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(2.0)
 
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
