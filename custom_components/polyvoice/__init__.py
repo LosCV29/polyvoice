@@ -42,9 +42,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {"config": config}
 
     # Monitor ALL media_next_track calls
-    async def monitor_skip(call):
-        if call.domain == "media_player" and call.service == "media_next_track":
-            _LOGGER.warning(">>> SKIP DETECTED <<< Time: %.3f Target: %s", time.time(), call.data.get("entity_id"))
+    async def monitor_skip(event):
+        data = event.data
+        if data.get("domain") == "media_player" and data.get("service") == "media_next_track":
+            target = data.get("service_data", {}).get("entity_id", "unknown")
+            _LOGGER.warning(">>> SKIP DETECTED <<< Time: %.3f Target: %s", time.time(), target)
 
     hass.bus.async_listen("call_service", monitor_skip)
 
