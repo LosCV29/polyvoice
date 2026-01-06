@@ -4175,10 +4175,35 @@ class LMStudioConversationEntity(ConversationEntity):
 
                     # Fallback: use last paused player (Voice PE reports idle, not paused)
                     if self._last_paused_player:
-                        _LOGGER.info("No paused player found, using tracked player: %s", self._last_paused_player)
-                        await self.hass.services.async_call("media_player", "media_play", {"entity_id": self._last_paused_player})
-                        room = get_room_name(self._last_paused_player)
-                        return {"status": "resumed", "message": f"Resumed in {room}"}
+                        player = self._last_paused_player
+                        _LOGGER.info("No paused player found, using tracked player: %s", player)
+
+                        # Try media_player.media_play first
+                        try:
+                            await self.hass.services.async_call(
+                                "media_player", "media_play",
+                                target={"entity_id": player},
+                                blocking=True
+                            )
+                            room = get_room_name(player)
+                            return {"status": "resumed", "message": f"Resumed in {room}"}
+                        except Exception as e:
+                            _LOGGER.warning("media_play failed: %s, trying MA play", e)
+
+                        # Fallback: try Music Assistant's play command
+                        try:
+                            await self.hass.services.async_call(
+                                "music_assistant", "play_media",
+                                {"media_id": "__resume__", "media_type": "track"},
+                                target={"entity_id": player},
+                                blocking=True
+                            )
+                            room = get_room_name(player)
+                            return {"status": "resumed", "message": f"Resumed in {room}"}
+                        except Exception as e:
+                            _LOGGER.warning("MA play_media also failed: %s", e)
+
+                        return {"error": f"Could not resume on {get_room_name(player)}"}
 
                     return {"error": "No paused music to resume"}
 
@@ -4270,6 +4295,11 @@ class LMStudioConversationEntity(ConversationEntity):
                         target={"entity_id": target},
                         blocking=True
                     )
+
+                    # Track target as the active player for pause/resume
+                    self._last_paused_player = target
+                    _LOGGER.info("Tracking transferred player: %s", target)
+
                     # Update last active
                     if self.last_active_speaker:
                         await self.hass.services.async_call(
