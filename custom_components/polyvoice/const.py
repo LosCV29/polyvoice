@@ -300,8 +300,9 @@ GENERAL GUIDELINES:
 - For restaurant recommendations, use get_restaurant_recommendations
 - For news, use get_news
 - For calendar events, use get_calendar_events
-- For music control (play, skip, pause, etc.), let native Home Assistant handle it
-- For native HA control (lights, locks), let native HA Assist handle those
+- For music control (play, skip, pause, etc.), use the control_music tool if available
+- For device control (lights, locks, etc.), use the control_device tool
+- CRITICAL: NEVER claim you performed an action (skip, play, turn on, etc.) unless you actually called a tool AND received a success response. If you don't have a tool to do something, say you can't do it.
 """
 
 # =============================================================================
