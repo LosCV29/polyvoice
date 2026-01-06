@@ -1043,11 +1043,30 @@ class LMStudioConversationEntity(ConversationEntity):
     ) -> conversation.ConversationResult:
         """Process a sentence."""
         conversation_id = user_input.conversation_id or ulid.ulid_now()
-        
+
         # Store original query for tools to access (for reliable device name extraction)
         self._current_user_query = user_input.text
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
+
+        # MUSIC COOLDOWN: After any music action, ignore ALL voice commands for cooldown period
+        # This prevents false wake word triggers from Chromecast audio causing unwanted actions
+        text_lower = user_input.text.lower() if user_input.text else ""
+        if self._last_music_command_time:
+            elapsed = (datetime.now() - self._last_music_command_time).total_seconds()
+            if elapsed < self._music_debounce_seconds:
+                # Check if this looks like a music command OR is gibberish/short (likely false trigger)
+                is_music_cmd = any(pattern in text_lower for pattern in MUSIC_COMMAND_PATTERNS)
+                is_likely_false_trigger = len(text_lower) < 15 or not any(c.isalpha() for c in text_lower)
+                if is_music_cmd or is_likely_false_trigger:
+                    _LOGGER.info("COOLDOWN: Ignoring command '%s' (%.1fs after music action)",
+                                user_input.text[:30], elapsed)
+                    intent_response = intent.IntentResponse(language=user_input.language)
+                    intent_response.async_set_speech("")
+                    return conversation.ConversationResult(
+                        response=intent_response,
+                        conversation_id=conversation_id,
+                    )
 
         # Try native intents first, fall back to LLM if they fail
         native_result = await self._try_native_intent(user_input, conversation_id)
@@ -3992,19 +4011,23 @@ class LMStudioConversationEntity(ConversationEntity):
 
             _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
 
-            # Debounce skip/previous/pause/resume to prevent double-execution
-            # from wake word re-triggering on Chromecast audio changes
+            # Update cooldown timestamp for ALL music actions
+            # This triggers the cooldown in async_process to block false wake word triggers
+            now = datetime.now()
+
+            # Debounce specific actions to prevent double-execution of the same command
             debounce_actions = {"skip_next", "skip_previous", "pause", "resume", "stop"}
             if action in debounce_actions:
-                now = datetime.now()
                 if (self._last_music_command == action and
                     self._last_music_command_time and
                     (now - self._last_music_command_time).total_seconds() < self._music_debounce_seconds):
                     _LOGGER.info("DEBOUNCE: Ignoring duplicate '%s' command within %s seconds",
                                 action, self._music_debounce_seconds)
                     return {"status": "debounced", "message": f"Command '{action}' ignored (duplicate)"}
-                self._last_music_command = action
-                self._last_music_command_time = now
+
+            # Set cooldown for ALL music actions (play, skip, pause, etc.)
+            self._last_music_command = action
+            self._last_music_command_time = now
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
