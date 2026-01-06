@@ -1135,12 +1135,14 @@ class LMStudioConversationEntity(ConversationEntity):
             # Check if we got an intent result
             if hasattr(result.response, 'intent') and result.response.intent is not None:
                 intent_type = result.response.intent.intent_type
-                _LOGGER.debug("Native intent matched: %s", intent_type)
+                _LOGGER.warning("NATIVE INTENT: Matched '%s' for input: %s", intent_type, user_input.text[:50])
 
                 # Check if this intent is in our excluded list
                 if intent_type in self.excluded_intents:
-                    _LOGGER.debug("Intent excluded, sending to LLM: %s", intent_type)
+                    _LOGGER.warning("NATIVE INTENT: '%s' is EXCLUDED - sending to LLM instead", intent_type)
                     return None
+                else:
+                    _LOGGER.warning("NATIVE INTENT: '%s' will be EXECUTED by native HA", intent_type)
 
             # ACTION_DONE = command executed (turn on light, etc)
             if result.response.response_type == intent.IntentResponseType.ACTION_DONE:
@@ -4019,13 +4021,19 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": f"Failed to search restaurants: {str(err)}"}
 
         elif tool_name == "control_music":
+            import time
+            _LOGGER.warning("╔══════════════════════════════════════╗")
+            _LOGGER.warning("║     CONTROL_MUSIC TOOL CALLED        ║")
+            _LOGGER.warning("╚══════════════════════════════════════╝")
+            _LOGGER.warning("MUSIC TOOL: Timestamp: %.3f", time.time())
+
             action = arguments.get("action", "").lower()
             query = arguments.get("query", "")
             media_type = arguments.get("media_type", "artist")
             room = arguments.get("room", "").lower() if arguments.get("room") else ""
             shuffle = arguments.get("shuffle", False)
 
-            _LOGGER.debug("Music control: action=%s, room=%s, query=%s", action, room, query)
+            _LOGGER.warning("MUSIC TOOL: action=%s, room=%s, query=%s", action, room, query)
 
             players = self.room_player_mapping  # {room: entity_id}
             all_players = list(players.values())
@@ -4145,11 +4153,22 @@ class LMStudioConversationEntity(ConversationEntity):
 
                 elif action == "skip_next":
                     # Find the player that's PLAYING and skip
-                    _LOGGER.info("Looking for player in 'playing' state...")
+                    import time
+                    skip_time = time.time()
+                    _LOGGER.warning("╔══════════════════════════════════════╗")
+                    _LOGGER.warning("║       SKIP_NEXT CALLED               ║")
+                    _LOGGER.warning("╚══════════════════════════════════════╝")
+                    _LOGGER.warning("SKIP: Timestamp: %.3f", skip_time)
+                    _LOGGER.warning("SKIP: Looking for player in 'playing' state...")
                     playing = find_player_by_state("playing")
                     if playing:
+                        _LOGGER.warning("SKIP: Found player: %s", playing)
+                        _LOGGER.warning("SKIP: >>> CALLING media_next_track NOW <<< at %.3f", time.time())
                         await self.hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
+                        _LOGGER.warning("SKIP: >>> media_next_track COMPLETED <<< at %.3f", time.time())
+                        _LOGGER.warning("SKIP: Returning success response")
                         return {"status": "skipped", "message": "Skipped to next track"}
+                    _LOGGER.warning("SKIP: No playing player found!")
                     return {"error": "No music is playing to skip"}
 
                 elif action == "skip_previous":
