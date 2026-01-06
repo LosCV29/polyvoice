@@ -4034,15 +4034,29 @@ class LMStudioConversationEntity(ConversationEntity):
                 _LOGGER.error("No players configured! room_player_mapping is empty")
                 return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping and add entries like: living room: media_player.your_player"}
 
-            # Helper: find player in a specific state
+            # Helper: find player in a specific state (handles AirPlay quirks)
             def find_player_by_state(target_state):
                 """Scan all players and return the one in the target state."""
+                # First pass: exact state match
                 for pid in all_players:
                     state = self.hass.states.get(pid)
                     if state:
-                        _LOGGER.info("  %s → %s", pid, state.state)
+                        _LOGGER.info("  %s → %s (attrs: %s)", pid, state.state,
+                                    {k: v for k, v in state.attributes.items() if k in ['media_title', 'media_artist', 'source']})
                         if state.state == target_state:
                             return pid
+
+                # Second pass: for "playing", also check AirPlay states with active media
+                if target_state == "playing":
+                    for pid in all_players:
+                        state = self.hass.states.get(pid)
+                        if state and state.state in ("on", "idle", "standby", "buffering"):
+                            # Check if there's active media (AirPlay often reports idle/on while playing)
+                            media_title = state.attributes.get("media_title")
+                            if media_title:
+                                _LOGGER.info("  Found AirPlay-style active player: %s (state=%s, title=%s)",
+                                           pid, state.state, media_title)
+                                return pid
                 return None
 
             # Helper: get room name from entity_id
