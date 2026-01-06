@@ -154,6 +154,9 @@ MUSIC_COMMAND_PATTERNS = frozenset([
     # Skip/navigation commands - catch all variations
     "skip", "next", "previous", "go back", "next song", "next track",
     "previous song", "previous track", "skip this",
+    # Restart track commands ("bring it back")
+    "bring it back", "play from beginning", "start the song over",
+    "restart the song", "start over", "from the top", "replay this",
     # Pause/resume/stop commands
     "pause", "resume", "stop", "unpause",
     "pause music", "pause the music", "resume music", "resume the music",
@@ -937,14 +940,14 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, what_playing, transfer, shuffle. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, restart_track, what_playing, transfer, shuffle. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "action": {
                                 "type": "string",
-                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "what_playing", "transfer", "shuffle"],
-                                "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled."
+                                "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "restart_track", "what_playing", "transfer", "shuffle"],
+                                "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled. Use 'restart_track' to replay the current song from the beginning (triggered by 'bring it back', 'play from beginning', 'start the song over')."
                             },
                             "query": {"type": "string", "description": "What to play (artist, album, track, playlist, or genre). For shuffle, this searches for matching playlists."},
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
@@ -4016,7 +4019,7 @@ class LMStudioConversationEntity(ConversationEntity):
             now = datetime.now()
 
             # Debounce specific actions to prevent double-execution of the same command
-            debounce_actions = {"skip_next", "skip_previous", "pause", "resume", "stop"}
+            debounce_actions = {"skip_next", "skip_previous", "restart_track", "pause", "resume", "stop"}
             if action in debounce_actions:
                 if (self._last_music_command == action and
                     self._last_music_command_time and
@@ -4147,6 +4150,15 @@ class LMStudioConversationEntity(ConversationEntity):
                     if playing:
                         await self.hass.services.async_call("media_player", "media_previous_track", {"entity_id": playing})
                         return {"status": "skipped", "message": "Previous track"}
+                    return {"error": "No music is playing"}
+
+                elif action == "restart_track":
+                    # Restart the current song from the beginning ("bring it back")
+                    _LOGGER.info("Looking for player in 'playing' state to restart track...")
+                    playing = find_player_by_state("playing")
+                    if playing:
+                        await self.hass.services.async_call("media_player", "media_seek", {"entity_id": playing, "seek_position": 0})
+                        return {"status": "restarted", "message": "Bringing it back from the top"}
                     return {"error": "No music is playing"}
 
                 elif action == "what_playing":
