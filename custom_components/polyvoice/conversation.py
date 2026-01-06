@@ -4187,9 +4187,25 @@ class LMStudioConversationEntity(ConversationEntity):
                     if self._last_paused_player:
                         player = self._last_paused_player
                         state = self.hass.states.get(player)
-                        _LOGGER.warning("RESUME: Tracked player %s state=%s", player, state.state if state else "NOT FOUND")
+                        player_state = state.state if state else "NOT FOUND"
+                        _LOGGER.warning("RESUME: Tracked player %s state=%s", player, player_state)
 
-                        # Try media_player.media_play
+                        # WORKAROUND: If player is idle/off, turn it on first
+                        # MA remembers queue internally and will resume from saved position
+                        if player_state in ("idle", "off", "standby", "unavailable"):
+                            try:
+                                _LOGGER.warning("RESUME: Player is %s - calling turn_on first", player_state)
+                                await self.hass.services.async_call(
+                                    "media_player", "turn_on",
+                                    {"entity_id": player},
+                                    blocking=True
+                                )
+                                import asyncio
+                                await asyncio.sleep(0.5)  # Give player time to wake up
+                            except Exception as e:
+                                _LOGGER.warning("RESUME: turn_on failed (may be ok): %s", e)
+
+                        # Now try media_player.media_play
                         try:
                             _LOGGER.warning("RESUME: Calling media_player.media_play on %s", player)
                             await self.hass.services.async_call(
@@ -4202,19 +4218,6 @@ class LMStudioConversationEntity(ConversationEntity):
                             return {"status": "resumed", "message": f"Resumed in {room}"}
                         except Exception as e:
                             _LOGGER.error("RESUME: media_play FAILED: %s", e)
-
-                        # Try media_play_pause as fallback (toggle)
-                        try:
-                            _LOGGER.warning("RESUME: Trying media_play_pause toggle on %s", player)
-                            await self.hass.services.async_call(
-                                "media_player", "media_play_pause",
-                                {"entity_id": player},
-                                blocking=True
-                            )
-                            room = get_room_name(player)
-                            return {"status": "resumed", "message": f"Resumed in {room}"}
-                        except Exception as e:
-                            _LOGGER.error("RESUME: media_play_pause FAILED: %s", e)
 
                         return {"error": f"Could not resume on {get_room_name(player)}"}
 
