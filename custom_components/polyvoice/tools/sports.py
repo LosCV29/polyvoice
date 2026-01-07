@@ -304,7 +304,7 @@ async def get_sports_info(
             away = lg['away_team']
             h_score = lg['home_score']
             a_score = lg['away_score']
-            # Determine winner
+            # Determine winner and build natural response
             try:
                 if int(h_score) > int(a_score):
                     winner, loser = home, away
@@ -312,9 +312,16 @@ async def get_sports_info(
                 else:
                     winner, loser = away, home
                     w_score, l_score = a_score, h_score
-                response_parts.append(f"Last game ({date_str}): {winner} beat {loser} {w_score}-{l_score}")
+                # Natural phrasing the LLM won't want to change
+                if date_str in ["today", "yesterday"]:
+                    response_parts.append(f"{winner} beat {loser} {w_score}-{l_score} {date_str}")
+                else:
+                    response_parts.append(f"{winner} beat {loser} {w_score}-{l_score} on {date_str}")
             except ValueError:
-                response_parts.append(f"Last game ({date_str}): {lg['summary']}")
+                if date_str in ["today", "yesterday"]:
+                    response_parts.append(f"{lg['summary']} {date_str}")
+                else:
+                    response_parts.append(f"{lg['summary']} on {date_str}")
         if "next_game" in result:
             ng = result["next_game"]
             response_parts.append(f"Next game: {ng['summary']}")
