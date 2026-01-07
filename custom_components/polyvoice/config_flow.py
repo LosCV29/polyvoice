@@ -832,6 +832,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             action = user_input.get("action", "add_device")
             selected_device = user_input.get("select_device", "")
+            selected_alias = user_input.get("select_alias", "")
             new_entity = user_input.get("new_entity", "")
             new_alias = user_input.get("new_alias", "").strip()
 
@@ -852,12 +853,12 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 # Remove all aliases pointing to this entity
                 aliases_dict = {k: v for k, v in aliases_dict.items() if v != selected_device}
 
-            elif action == "remove_alias" and selected_device:
-                # Remove just the selected alias (selected_device is actually alias name here)
-                if selected_device in aliases_dict:
-                    del aliases_dict[selected_device]
+            elif action == "remove_alias" and selected_alias:
+                # Remove just the selected alias
+                if selected_alias in aliases_dict:
+                    del aliases_dict[selected_alias]
 
-            elif not new_entity and not new_alias and not selected_device:
+            elif not new_entity and not new_alias and not selected_device and not selected_alias:
                 # Empty submit - return to menu
                 return self.async_create_entry(title="", data=self._entry.options)
 
@@ -887,68 +888,95 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     entity_aliases[eid] = []
                 entity_aliases[eid].append(alias)
 
-        # Build description showing current smart devices
-        if llm_entities:
-            lines = []
+        # Build description showing current smart devices with their aliases
+        if llm_entities or aliases_dict:
+            lines = ["───────────────────────────────"]
+
+            # Show devices with their aliases
             for eid in sorted(llm_entities):
                 state = self.hass.states.get(eid)
                 friendly = state.attributes.get("friendly_name", eid) if state else eid
                 aliases = entity_aliases.get(eid, [])
+                lines.append(f"📱 {friendly}")
+                lines.append(f"    Entity: {eid}")
                 if aliases:
-                    alias_str = ", ".join(f'"{a}"' for a in aliases)
-                    lines.append(f"• **{friendly}** ({eid})\n  Aliases: {alias_str}")
+                    for a in aliases:
+                        lines.append(f"    🏷️ \"{a}\"")
                 else:
-                    lines.append(f"• **{friendly}** ({eid})\n  No aliases")
-            description = "**Smart Devices (LLM-controlled):**\n" + "\n".join(lines)
-        else:
-            description = "No smart devices configured. Add devices below to enable voice aliases and smart matching."
+                    lines.append("    (no aliases)")
+                lines.append("")
 
-        # Build select options for existing smart devices
+            # Show orphan aliases (aliases pointing to entities not in llm_entities)
+            orphan_aliases = {k: v for k, v in aliases_dict.items() if v not in llm_entities}
+            if orphan_aliases:
+                lines.append("Aliases (standalone):")
+                for alias, eid in orphan_aliases.items():
+                    lines.append(f"  🏷️ \"{alias}\" → {eid}")
+
+            lines.append("───────────────────────────────")
+            description = "\n".join(lines)
+        else:
+            description = "No smart devices configured yet.\n\nAdd a device to enable voice aliases and smart matching."
+
+        # Build select options for existing smart devices (for add_alias and remove_device)
         device_options = []
         for eid in sorted(llm_entities):
             state = self.hass.states.get(eid)
             friendly = state.attributes.get("friendly_name", eid) if state else eid
-            device_options.append(selector.SelectOptionDict(value=eid, label=f"{friendly} ({eid})"))
+            device_options.append(selector.SelectOptionDict(value=eid, label=friendly))
 
-        # Build select options for existing aliases (for removal)
+        # Build select options for existing aliases (for remove_alias)
         alias_options = []
-        for alias_name, eid in aliases_dict.items():
-            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f'"{alias_name}" → {eid}'))
+        for alias_name, eid in sorted(aliases_dict.items()):
+            state = self.hass.states.get(eid)
+            friendly = state.attributes.get("friendly_name", eid) if state else eid
+            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f"\"{alias_name}\" ({friendly})"))
+
+        # Build the schema dynamically based on what's available
+        schema_dict = {
+            vol.Optional("action", default="add_device"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="add_device", label="➕ Add New Device"),
+                        selector.SelectOptionDict(value="add_alias", label="🏷️ Add Alias to Device"),
+                        selector.SelectOptionDict(value="remove_device", label="❌ Remove Device"),
+                        selector.SelectOptionDict(value="remove_alias", label="🗑️ Remove Alias"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        }
+
+        # Add device selector if we have devices
+        if device_options:
+            schema_dict[vol.Optional("select_device")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=device_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+
+        # Add alias selector if we have aliases
+        if alias_options:
+            schema_dict[vol.Optional("select_alias")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=alias_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+
+        # Always show entity picker and alias input
+        schema_dict[vol.Optional("new_entity")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(multiple=False)
+        )
+        schema_dict[vol.Optional("new_alias")] = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        )
 
         return self.async_show_form(
             step_id="smart_devices",
             description_placeholders={"devices": description},
-            data_schema=vol.Schema(
-                {
-                    vol.Optional("action", default="add_device"): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(value="add_device", label="Add Smart Device"),
-                                selector.SelectOptionDict(value="add_alias", label="Add Alias to Device"),
-                                selector.SelectOptionDict(value="remove_device", label="Remove Device"),
-                                selector.SelectOptionDict(value="remove_alias", label="Remove Alias"),
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional("select_device"): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=device_options + alias_options,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ) if device_options or alias_options else selector.TextSelector(),
-                    vol.Optional("new_entity"): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            multiple=False,
-                        )
-                    ),
-                    vol.Optional("new_alias"): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        )
-                    ),
-                }
-            ),
+            data_schema=vol.Schema(schema_dict),
         )
 
     async def async_step_music_rooms(

@@ -94,8 +94,9 @@
         "description": "{devices}",
         "data": {
           "action": "Action",
-          "select_device": "Select Device or Alias",
-          "new_entity": "Entity to Add",
+          "select_device": "Select Device",
+          "select_alias": "Select Alias",
+          "new_entity": "New Device",
           "new_alias": "Voice Alias (what you'll say)"
         }
       },
