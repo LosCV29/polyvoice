@@ -147,6 +147,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_supported_languages = ["*"]  # Support all languages via LLM
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the agent."""
