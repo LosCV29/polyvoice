@@ -581,12 +581,12 @@ def _find_entity_by_query(hass: HomeAssistant, query: str, device_aliases: dict)
                 if query_lower in alias_lower or alias_lower in query_lower:
                     partial_matches.append((4, entity_entry.entity_id, friendly_name or alias))
 
-        # Check friendly name
+        # Check friendly name (bidirectional partial matching for fuzzy support)
         if friendly_name:
             fn_lower = friendly_name.lower()
             if fn_lower == query_lower:
                 partial_matches.append((5, entity_entry.entity_id, friendly_name))  # PRIORITY 5: Exact friendly
-            elif query_lower in fn_lower:
+            elif query_lower in fn_lower or fn_lower in query_lower:
                 partial_matches.append((6, entity_entry.entity_id, friendly_name))  # PRIORITY 6: Partial friendly
 
     # Check states not in entity registry (rare but possible)
@@ -597,7 +597,7 @@ def _find_entity_by_query(hass: HomeAssistant, query: str, device_aliases: dict)
                 fn_lower = friendly_name.lower()
                 if fn_lower == query_lower:
                     partial_matches.append((5, entity_id, friendly_name))
-                elif query_lower in fn_lower:
+                elif query_lower in fn_lower or fn_lower in query_lower:
                     partial_matches.append((6, entity_id, friendly_name))
 
     # Return best match by priority
