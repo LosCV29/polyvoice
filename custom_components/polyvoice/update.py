@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 
@@ -82,6 +83,25 @@ class PolyVoiceUpdateEntity(UpdateEntity):
     def release_summary(self) -> str | None:
         """Return the release notes."""
         return self._release_notes
+
+    async def async_added_to_hass(self) -> None:
+        """Update device registry sw_version when entity is added."""
+        await super().async_added_to_hass()
+        # Force update device registry with current version
+        # This ensures sw_version stays in sync after updates
+        device_registry = dr.async_get(self.hass)
+        device = device_registry.async_get_device(
+            identifiers={(DOMAIN, self._entry.entry_id)}
+        )
+        if device and device.sw_version != self._installed_version:
+            device_registry.async_update_device(
+                device.id, sw_version=self._installed_version
+            )
+            _LOGGER.info(
+                "Updated PolyVoice device version from %s to %s",
+                device.sw_version,
+                self._installed_version,
+            )
 
     @property
     def device_info(self) -> dict[str, Any]:
