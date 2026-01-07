@@ -1055,25 +1055,6 @@ class LMStudioConversationEntity(ConversationEntity):
 
         _LOGGER.info("=== Incoming request: '%s' (conv_id: %s) ===", user_input.text, conversation_id[:8])
 
-        # MUSIC COOLDOWN: After any music action, ignore ALL voice commands for cooldown period
-        # This prevents false wake word triggers from Chromecast audio causing unwanted actions
-        text_lower = user_input.text.lower() if user_input.text else ""
-        if self._last_music_command_time:
-            elapsed = (datetime.now() - self._last_music_command_time).total_seconds()
-            if elapsed < self._music_debounce_seconds:
-                # Check if this looks like a music command OR is gibberish/short (likely false trigger)
-                is_music_cmd = any(pattern in text_lower for pattern in MUSIC_COMMAND_PATTERNS)
-                is_likely_false_trigger = len(text_lower) < 15 or not any(c.isalpha() for c in text_lower)
-                if is_music_cmd or is_likely_false_trigger:
-                    _LOGGER.info("COOLDOWN: Ignoring command '%s' (%.1fs after music action)",
-                                user_input.text[:30], elapsed)
-                    intent_response = intent.IntentResponse(language=user_input.language)
-                    intent_response.async_set_speech("")
-                    return conversation.ConversationResult(
-                        response=intent_response,
-                        conversation_id=conversation_id,
-                    )
-
         # Try native intents first, fall back to LLM if they fail
         native_result = await self._try_native_intent(user_input, conversation_id)
         if native_result is not None:
