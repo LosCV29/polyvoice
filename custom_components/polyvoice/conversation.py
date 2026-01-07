@@ -426,6 +426,9 @@ class LMStudioConversationEntity(ConversationEntity):
             context=None,
             conversation_id=None,
             language=self.hass.config.language,
+            device_id=None,
+            satellite_id=None,
+            agent_id=self.entity_id,
         )
 
         result = await self.async_process(user_input)
