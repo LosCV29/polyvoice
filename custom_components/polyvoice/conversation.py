@@ -233,13 +233,15 @@ class PolyVoiceIntentHandler(intent.IntentHandler):
 
         _LOGGER.debug("Routing to LLM with text: %s", original_text)
 
-        # Create a fake ConversationInput to pass to our LLM
+        # Create a ConversationInput to pass to our LLM
         user_input = conversation.ConversationInput(
             text=original_text,
             context=intent_obj.context,
             conversation_id=None,
             device_id=intent_obj.device_id,
             language=intent_obj.language,
+            agent_id=None,
+            satellite_id=getattr(intent_obj, 'satellite_id', None),
         )
 
         # Call the LLM directly (skip native intent check since we ARE the handler)
