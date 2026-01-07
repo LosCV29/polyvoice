@@ -329,14 +329,11 @@ def _find_entity_by_query(
     """Internal entity search for a single query string."""
     query_lower = query.lower().strip()
 
-    _LOGGER.debug("Fuzzy search: query='%s'", query_lower)
-
     # PRIORITY 1: Exact match in configured device aliases (O(1) dict lookup)
     if query_lower in device_aliases:
         entity_id = device_aliases[query_lower]
         state = hass.states.get(entity_id)
         friendly_name = state.attributes.get("friendly_name", query) if state else query
-        _LOGGER.debug("Fuzzy match P1: exact alias -> %s", entity_id)
         return (entity_id, friendly_name)
 
     # Collect partial matches with priorities (lower = better)
@@ -347,7 +344,6 @@ def _find_entity_by_query(
         if _is_word_match(query_lower, alias):
             state = hass.states.get(entity_id)
             friendly_name = state.attributes.get("friendly_name", alias) if state else alias
-            _LOGGER.debug("Fuzzy match P2: partial alias '%s' -> %s", alias, entity_id)
             return (entity_id, friendly_name)  # Return immediately for device aliases
 
     # Single pass through entity registry for aliases + friendly names
@@ -363,7 +359,6 @@ def _find_entity_by_query(
             for alias in entity_entry.aliases:
                 alias_lower = alias.lower()
                 if alias_lower == query_lower:
-                    _LOGGER.debug("Fuzzy match P3: exact registry alias '%s' -> %s", alias, entity_entry.entity_id)
                     return (entity_entry.entity_id, friendly_name or alias)  # PRIORITY 3: Exact alias
                 if _is_word_match(query_lower, alias_lower):
                     partial_matches.append((4, entity_entry.entity_id, friendly_name or alias))
@@ -390,7 +385,6 @@ def _find_entity_by_query(
     # Return best match by priority
     if partial_matches:
         partial_matches.sort(key=lambda x: x[0])
-        _LOGGER.debug("Fuzzy match: best partial (P%d) '%s' -> %s", partial_matches[0][0], partial_matches[0][2], partial_matches[0][1])
         return (partial_matches[0][1], partial_matches[0][2])
 
     # PRIORITY 7: Location-aware fuzzy matching (catches typos in device type only)
@@ -442,8 +436,6 @@ def _find_entity_by_query(
                 matched_name = close_matches[0]
                 for entity_id, friendly_name, fn_lower in candidates:
                     if fn_lower == matched_name:
-                        _LOGGER.debug("Fuzzy match P7: difflib '%s' -> '%s' (%s)", query_lower, friendly_name, entity_id)
                         return (entity_id, friendly_name)
 
-    _LOGGER.debug("Fuzzy match: no match for '%s'", query_lower)
     return (None, None)

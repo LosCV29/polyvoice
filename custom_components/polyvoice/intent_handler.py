@@ -137,8 +137,6 @@ class PolyVoiceIntentHandler(IntentHandler):
             _LOGGER.debug("No slots in intent")
             return None
 
-        _LOGGER.debug("Intent slots: %s", intent.slots)
-
         # Get the device name from slots
         name_slot = intent.slots.get("name", {})
         device_name = None
@@ -151,10 +149,7 @@ class PolyVoiceIntentHandler(IntentHandler):
                 device_name = value
 
         if not device_name:
-            _LOGGER.debug("Could not extract device_name from slots")
             return None
-
-        _LOGGER.info("Extracted device_name='%s' from intent slots", device_name)
 
         # Build aliases dict for fuzzy matching:
         # 1. Friendly names of all Smart Devices (llm_controlled_entities)
@@ -175,18 +170,14 @@ class PolyVoiceIntentHandler(IntentHandler):
             if entity_id in self._llm_controlled_entities:
                 entity_aliases[alias_name.lower()] = entity_id
 
-        _LOGGER.info("Smart Device aliases for matching: %s", entity_aliases)
-
         # Use PolyVoice's fuzzy matching (handles synonyms like blind/shade)
         matched_id, matched_name = find_entity_by_name(
             self._hass, device_name, entity_aliases
         )
 
-        _LOGGER.info("Fuzzy match result: matched_id=%s, matched_name=%s", matched_id, matched_name)
-
         # Only return if matched entity is a Smart Device
         if matched_id and matched_id in self._llm_controlled_entities:
-            _LOGGER.info("Fuzzy matched '%s' to Smart Device %s", device_name, matched_id)
+            _LOGGER.debug("Fuzzy matched '%s' to Smart Device %s", device_name, matched_id)
             return matched_id
 
         return None
@@ -200,16 +191,11 @@ class PolyVoiceIntentHandler(IntentHandler):
         """
         # Always intercept if intent type is excluded
         if self._intent_type in self._excluded_intents:
-            _LOGGER.debug("Intercepting %s - intent type is in excluded_intents", self._intent_type)
             return True
 
         # Check if target entity matches a Smart Device (via name or alias)
         target_entity = self._get_target_entity_id(intent)
         if target_entity:
-            _LOGGER.info(
-                "Intercepting %s for entity %s - matched Smart Device",
-                self._intent_type, target_entity
-            )
             return True
 
         return False
@@ -225,15 +211,11 @@ class PolyVoiceIntentHandler(IntentHandler):
         """
         # Check if we should intercept this intent
         if not self._should_intercept(intent):
-            _LOGGER.debug("Not intercepting %s - using native handler", self._intent_type)
             if self._original_handler:
                 return await self._original_handler.async_handle(intent)
             raise HomeAssistantError(f"No handler for {self._intent_type}")
 
-        _LOGGER.info(
-            "PolyVoice intercepted %s intent - routing to LLM for intelligent handling",
-            self._intent_type
-        )
+        _LOGGER.debug("PolyVoice intercepting %s intent", self._intent_type)
 
         # Extract the command from intent slots
         command = self._extract_command_from_slots(intent.slots)
@@ -245,7 +227,7 @@ class PolyVoiceIntentHandler(IntentHandler):
                 return await self._original_handler.async_handle(intent)
             raise HomeAssistantError(f"Could not process {self._intent_type} intent")
 
-        _LOGGER.info("PolyVoice processing command: '%s'", command)
+        _LOGGER.debug("PolyVoice processing: '%s'", command)
 
         try:
             # Get the conversation entity via EntityComponent
@@ -452,7 +434,6 @@ def register_intent_handlers(
             original_handler=original,
         )
         intent_helpers.async_register(hass, handler)
-        _LOGGER.info("Registered PolyVoice handler for %s intent", intent_type)
 
         if original:
             original_handlers[intent_type] = original
@@ -474,4 +455,3 @@ def restore_intent_handlers(
 
     for intent_type, handler in original_handlers.items():
         intent_helpers.async_register(hass, handler)
-        _LOGGER.info("Restored original handler for %s intent", intent_type)
