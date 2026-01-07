@@ -940,7 +940,7 @@ class LMStudioConversationEntity(ConversationEntity):
                 "type": "function",
                 "function": {
                     "name": "control_music",
-                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. Actions: play, pause, resume, stop, skip_next, skip_previous, restart_track, what_playing, transfer, shuffle. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
+                    "description": f"Control MUSIC playback ONLY via Music Assistant. Rooms: {rooms_list}. IMPORTANT: This is ONLY for music/audio. Do NOT use for blinds, shades, curtains, or any physical devices - use control_device for those!",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -949,12 +949,15 @@ class LMStudioConversationEntity(ConversationEntity):
                                 "enum": ["play", "pause", "resume", "stop", "skip_next", "skip_previous", "restart_track", "what_playing", "transfer", "shuffle"],
                                 "description": "The music action to perform. Use 'shuffle' to search for a playlist and play it shuffled. Use 'restart_track' to replay the current song from the beginning (triggered by 'bring it back', 'play from beginning', 'start the song over')."
                             },
-                            "query": {"type": "string", "description": "What to play. For specific songs, include BOTH artist AND song name (e.g., 'Chichi Peralta Procura', 'Bad Bunny Titi Me Pregunto'). For artists, just the name."},
+                            "query": {
+                                "type": "string",
+                                "description": "MUSIC SEARCH QUERY - Parse user request intelligently: 'play [SONG] by [ARTIST]' → query='ARTIST SONG', 'play [ARTIST]' → query='ARTIST'. Examples: 'Hannah Montana by Migos' → 'Migos Hannah Montana', 'Despacito by Luis Fonsi' → 'Luis Fonsi Despacito', 'play Drake' → 'Drake'. Always put ARTIST FIRST, then SONG NAME for best search results."
+                            },
                             "room": {"type": "string", "description": f"Target room: {rooms_list}"},
                             "media_type": {
                                 "type": "string",
                                 "enum": ["artist", "album", "track", "playlist", "genre"],
-                                "description": "IMPORTANT: Use 'track' when user asks for a SPECIFIC SONG by name. Use 'artist' only when they want music BY an artist (no specific song). Examples: 'play Procura by Chichi Peralta' = track, 'play Chichi Peralta' = artist, 'play Despacito' = track."
+                                "description": "CRITICAL: Use 'track' when user mentions a SPECIFIC SONG (e.g., 'Hannah Montana', 'Despacito', 'Bohemian Rhapsody'). Use 'artist' ONLY when they want general music from an artist with NO song specified. When in doubt, use 'track'."
                             },
                             "shuffle": {"type": "boolean", "description": "Enable shuffle mode"}
                         },
