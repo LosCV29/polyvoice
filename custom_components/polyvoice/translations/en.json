@@ -32,7 +32,6 @@
           "entities": "PolyVoice Default Entities",
           "aliases": "LLM Fallback Aliases",
           "music_rooms": "Music Room Mapping",
-          "blinds": "Blinds/Shades Control",
           "api_keys": "External API Keys",
           "location": "Location Settings",
           "intents": "Excluded Intents",
@@ -83,6 +82,7 @@
           "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
           "calendar_entities": "Calendars",
           "camera_entities": "Cameras",
+          "blinds_favorite_buttons": "Blinds/Shades Favorite Position Buttons",
           "thermostat_min_temp": "Thermostat Minimum Temperature",
           "thermostat_max_temp": "Thermostat Maximum Temperature",
           "thermostat_temp_step": "Temperature Adjustment Step"

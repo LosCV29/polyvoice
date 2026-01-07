@@ -75,11 +75,7 @@ from .const import (
     CONF_CALENDAR_ENTITIES,
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
-    CONF_BLINDS_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
-    CONF_ENABLE_BLINDS,
-    DEFAULT_ENABLE_BLINDS,
-    DEFAULT_BLINDS_ENTITIES,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
@@ -440,12 +436,9 @@ class LMStudioConversationEntity(ConversationEntity):
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
 
-        # Blinds/shades configuration
-        self.enable_blinds = config.get(CONF_ENABLE_BLINDS, DEFAULT_ENABLE_BLINDS)
-        self.blinds_entities = parse_list_config(config.get(CONF_BLINDS_ENTITIES, DEFAULT_BLINDS_ENTITIES))
+        # Blinds/shades configuration - favorite buttons for preset positions
         self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
-        _LOGGER.debug("Blinds config: enabled=%s, entities=%s, buttons=%s",
-                     self.enable_blinds, self.blinds_entities, self.blinds_favorite_buttons)
+        _LOGGER.debug("Blinds favorite buttons: %s", self.blinds_favorite_buttons)
 
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
 
