@@ -72,7 +72,6 @@ from .const import (
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
     CONF_LLM_CONTROLLED_ENTITIES,
-    CONF_EXCLUDED_ENTITIES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
@@ -433,8 +432,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "model": "Model Settings",
                 "features": "Enable/Disable Features",
                 "entities": "PolyVoice Default Entities",
-                "smart_devices": "Smart Devices (with Aliases)",
-                "excluded_entities": "LLM-Only Entities",
+                "smart_devices": "Smart Devices",
                 "music_rooms": "Music Room Mapping",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
@@ -962,96 +960,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="smart_devices",
             description_placeholders={"devices": description},
-            data_schema=vol.Schema(schema_dict),
-        )
-
-    async def async_step_excluded_entities(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle LLM-only entities configuration.
-
-        These entities will ALWAYS be routed to the LLM, bypassing native
-        Home Assistant intents. Unlike Smart Devices, these don't have aliases.
-        """
-        current = {**self._entry.data, **self._entry.options}
-        current_excluded = current.get(CONF_EXCLUDED_ENTITIES, "")
-
-        # Parse current excluded entities
-        if isinstance(current_excluded, str) and current_excluded:
-            excluded_set = set(e.strip() for e in current_excluded.split("\n") if e.strip())
-        else:
-            excluded_set = set()
-
-        if user_input is not None:
-            action = user_input.get("action", "add")
-            selected_entity = user_input.get("select_entity", "")
-            new_entity = user_input.get("new_entity", "")
-
-            if action == "add" and new_entity:
-                excluded_set.add(new_entity)
-            elif action == "remove" and selected_entity:
-                excluded_set.discard(selected_entity)
-            elif not new_entity and not selected_entity:
-                # Empty submit - return to menu
-                return self.async_create_entry(title="", data=self._entry.options)
-
-            # Save updated config
-            updated_excluded = "\n".join(sorted(excluded_set)) if excluded_set else ""
-            new_options = {**self._entry.options, CONF_EXCLUDED_ENTITIES: updated_excluded}
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-
-            # Rebuild set for display
-            excluded_set = set(e.strip() for e in updated_excluded.split("\n") if e.strip()) if updated_excluded else set()
-
-        # Build display of current LLM-only entities
-        if excluded_set:
-            entity_lines = []
-            for eid in sorted(excluded_set):
-                state = self.hass.states.get(eid)
-                name = state.attributes.get("friendly_name", eid) if state else eid
-                entity_lines.append(f"• {name} ({eid})")
-            description = "\n".join(entity_lines)
-        else:
-            description = "No entities configured. Add entities that should always use the LLM."
-
-        # Build schema
-        schema_dict = {}
-
-        # Action selector
-        schema_dict[vol.Optional("action", default="add")] = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value="add", label="Add Entity"),
-                    selector.SelectOptionDict(value="remove", label="Remove Entity"),
-                ],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-
-        # Entity selector for removal (only show if we have entities)
-        if excluded_set:
-            entity_options = []
-            for eid in sorted(excluded_set):
-                state = self.hass.states.get(eid)
-                name = state.attributes.get("friendly_name", eid) if state else eid
-                entity_options.append(
-                    selector.SelectOptionDict(value=eid, label=f"{name}")
-                )
-            schema_dict[vol.Optional("select_entity")] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=entity_options,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
-
-        # Entity selector for adding new
-        schema_dict[vol.Optional("new_entity")] = selector.EntitySelector(
-            selector.EntitySelectorConfig(multiple=False)
-        )
-
-        return self.async_show_form(
-            step_id="excluded_entities",
-            description_placeholders={"entities": description},
             data_schema=vol.Schema(schema_dict),
         )
 

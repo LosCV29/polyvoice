@@ -3,11 +3,10 @@
 This module intercepts native Home Assistant intents and routes them
 through PolyVoice for LLM-controlled processing.
 
-Interception logic (in order):
-1. If target entity is in excluded_entities → NEVER intercept (use native HA)
-2. If intent type is in excluded_intents → intercept to LLM
-3. If target entity is in llm_controlled_entities (Smart Devices) → intercept to LLM
-4. Otherwise → use native HA
+Interception logic:
+1. If intent type is in excluded_intents → intercept to LLM
+2. If target entity (or alias) matches a Smart Device → intercept to LLM
+3. Otherwise → use native HA
 """
 from __future__ import annotations
 
@@ -103,7 +102,7 @@ class PolyVoiceIntentHandler(IntentHandler):
         conversation_entity_id: str,
         excluded_intents: set[str],
         llm_controlled_entities: set[str],
-        excluded_entities: set[str],
+        device_aliases: dict[str, str],
         original_handler: IntentHandler | None = None,
     ):
         """Initialize the intent handler.
@@ -114,7 +113,7 @@ class PolyVoiceIntentHandler(IntentHandler):
             conversation_entity_id: Entity ID of the PolyVoice conversation entity
             excluded_intents: Intent types to always intercept
             llm_controlled_entities: Entity IDs to always route to LLM (Smart Devices)
-            excluded_entities: Entity IDs to NEVER intercept (always use native HA)
+            device_aliases: Mapping of alias names to entity IDs for Smart Devices
             original_handler: The original handler to fall back to if needed
         """
         self._intent_type = intent_type
@@ -122,7 +121,7 @@ class PolyVoiceIntentHandler(IntentHandler):
         self._conversation_entity_id = conversation_entity_id
         self._excluded_intents = excluded_intents
         self._llm_controlled_entities = llm_controlled_entities
-        self._excluded_entities = excluded_entities
+        self._device_aliases = device_aliases
         self._original_handler = original_handler
 
     @property
@@ -151,26 +150,35 @@ class PolyVoiceIntentHandler(IntentHandler):
         if not device_name:
             return None
 
-        _LOGGER.debug("Looking for entity matching '%s'", device_name)
+        _LOGGER.debug("Looking for Smart Device matching '%s'", device_name)
 
-        # Build aliases dict combining excluded_entities and llm_controlled_entities
-        # This allows the fuzzy matcher to find entities we care about
-        all_controlled_entities = self._excluded_entities | self._llm_controlled_entities
+        # Build aliases dict for fuzzy matching:
+        # 1. Friendly names of all Smart Devices (llm_controlled_entities)
+        # 2. User-defined aliases (device_aliases) that point to Smart Devices
         entity_aliases = {}
-        for entity_id in all_controlled_entities:
+
+        # Add friendly names of Smart Devices
+        for entity_id in self._llm_controlled_entities:
             state = self._hass.states.get(entity_id)
             if state:
                 friendly = state.attributes.get("friendly_name", "").lower()
                 if friendly:
                     entity_aliases[friendly] = entity_id
 
+        # Add user-defined aliases (format: {alias_name: entity_id})
+        # Only include aliases that point to Smart Devices
+        for alias_name, entity_id in self._device_aliases.items():
+            if entity_id in self._llm_controlled_entities:
+                entity_aliases[alias_name.lower()] = entity_id
+
         # Use PolyVoice's fuzzy matching (handles synonyms like blind/shade)
         matched_id, matched_name = find_entity_by_name(
             self._hass, device_name, entity_aliases
         )
 
-        if matched_id:
-            _LOGGER.debug("Fuzzy matched '%s' to entity %s", device_name, matched_id)
+        # Only return if matched entity is a Smart Device
+        if matched_id and matched_id in self._llm_controlled_entities:
+            _LOGGER.info("Fuzzy matched '%s' to Smart Device %s", device_name, matched_id)
             return matched_id
 
         return None
@@ -180,29 +188,21 @@ class PolyVoiceIntentHandler(IntentHandler):
 
         Returns True if:
         1. The intent type is in excluded_intents, OR
-        2. The target entity is in excluded_entities, OR
-        3. The target entity is in llm_controlled_entities (Smart Devices)
+        2. The target entity (or alias) matches a Smart Device
         """
         # Always intercept if intent type is excluded
         if self._intent_type in self._excluded_intents:
             _LOGGER.debug("Intercepting %s - intent type is in excluded_intents", self._intent_type)
             return True
 
-        # Check if target entity is in excluded_entities or llm_controlled_entities
+        # Check if target entity matches a Smart Device (via name or alias)
         target_entity = self._get_target_entity_id(intent)
         if target_entity:
-            if target_entity in self._excluded_entities:
-                _LOGGER.info(
-                    "Intercepting %s for entity %s - entity is in excluded_entities",
-                    self._intent_type, target_entity
-                )
-                return True
-            if target_entity in self._llm_controlled_entities:
-                _LOGGER.info(
-                    "Intercepting %s for entity %s - entity is in Smart Devices list",
-                    self._intent_type, target_entity
-                )
-                return True
+            _LOGGER.info(
+                "Intercepting %s for entity %s - matched Smart Device",
+                self._intent_type, target_entity
+            )
+            return True
 
         return False
 
@@ -383,21 +383,21 @@ def register_intent_handlers(
     conversation_entity_id: str,
     excluded_intents: set[str],
     llm_controlled_entities: set[str],
-    excluded_entities: set[str],
+    device_aliases: dict[str, str],
 ) -> dict[str, IntentHandler]:
     """Register PolyVoice handlers for interceptable intents.
 
     Handlers are registered when:
     - excluded_intents is set: registers handlers for those specific intent types
-    - llm_controlled_entities or excluded_entities is set: registers handlers for ALL
-      interceptable intents to enable per-entity routing
+    - llm_controlled_entities is set: registers handlers for ALL interceptable
+      intents to enable per-entity (Smart Device) routing
 
     Args:
         hass: Home Assistant instance
         conversation_entity_id: Entity ID of the PolyVoice conversation entity
         excluded_intents: Set of intent types to always intercept
         llm_controlled_entities: Set of entity IDs to always route to LLM (Smart Devices)
-        excluded_entities: Set of entity IDs to always route to LLM
+        device_aliases: Mapping of alias names to entity IDs for Smart Devices
 
     Returns:
         Dict of intent_type -> original_handler for later restoration
@@ -408,7 +408,7 @@ def register_intent_handlers(
 
     # Build set of intents to register:
     # - All excluded_intents (user explicitly wants these intercepted)
-    # - All INTERCEPTABLE_INTENTS if we have entity-based control
+    # - All INTERCEPTABLE_INTENTS if we have Smart Devices configured
     intents_to_register: set[str] = set()
 
     # Always register excluded_intents (if they're interceptable)
@@ -420,8 +420,8 @@ def register_intent_handlers(
                 "Intent %s is not interceptable by PolyVoice - skipping", intent_type
             )
 
-    # If we have entity-based control, register ALL interceptable intents
-    if llm_controlled_entities or excluded_entities:
+    # If we have Smart Devices configured, register ALL interceptable intents
+    if llm_controlled_entities:
         intents_to_register.update(INTERCEPTABLE_INTENTS)
 
     for intent_type in intents_to_register:
@@ -435,7 +435,7 @@ def register_intent_handlers(
             conversation_entity_id=conversation_entity_id,
             excluded_intents=excluded_intents,
             llm_controlled_entities=llm_controlled_entities,
-            excluded_entities=excluded_entities,
+            device_aliases=device_aliases,
             original_handler=original,
         )
         intent_helpers.async_register(hass, handler)
