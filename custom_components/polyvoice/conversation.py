@@ -148,7 +148,11 @@ class LMStudioConversationEntity(ConversationEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_supported_languages = ["*"]  # Support all languages via LLM
+
+    @property
+    def supported_languages(self) -> list[str] | str:
+        """Return supported languages - use MATCH_ALL for all languages."""
+        return conversation.MATCH_ALL
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the agent."""
@@ -179,11 +183,6 @@ class LMStudioConversationEntity(ConversationEntity):
 
         # Initialize config
         self._update_from_config({**config_entry.data, **config_entry.options})
-
-    @property
-    def supported_languages(self) -> list[str]:
-        """Return supported languages (all via LLM)."""
-        return ["*"]
 
     @property
     def device_info(self):
