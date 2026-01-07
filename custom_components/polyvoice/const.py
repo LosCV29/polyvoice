@@ -222,6 +222,8 @@ DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassClimateSetTemperature",  # Use control_thermostat
     "HassTimerStatus",        # Let LLM handle
     "HassSetPosition",        # Use control_device for blinds/covers
+    "HassOpenCover",          # Use control_device - LLM handles fuzzy matching better
+    "HassCloseCover",         # Use control_device - LLM handles fuzzy matching better
 ]
 
 # Complete list of Home Assistant native intents (alphabetically sorted)

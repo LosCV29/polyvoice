@@ -155,6 +155,26 @@ MUSIC_COMMAND_PATTERNS = frozenset([
     "stop music", "stop the music",
 ])
 
+# Cover/blinds/shades command patterns - skip native intent for LLM handling
+# HA native intents execute BEFORE we can check exclusions, causing unwanted actions
+# LLM handles fuzzy matching way better (e.g., "open master shade 3")
+COVER_COMMAND_PATTERNS = frozenset([
+    # Open/close/stop
+    "open the blind", "open the shade", "open the curtain", "open the cover",
+    "close the blind", "close the shade", "close the curtain", "close the cover",
+    "open blind", "open shade", "open curtain", "open cover",
+    "close blind", "close shade", "close curtain", "close cover",
+    "raise the blind", "raise the shade", "lower the blind", "lower the shade",
+    "raise blind", "raise shade", "lower blind", "lower shade",
+    "stop the blind", "stop the shade", "stop blind", "stop shade",
+    # Position commands
+    "set blind", "set shade", "blind to", "shade to", "blinds to", "shades to",
+    # Favorite/preset
+    "favorite position", "preset position", "my position",
+    # Generic patterns that likely involve covers
+    "roller", "blackout", "sheer",
+])
+
 # CAMERA_FRIENDLY_NAMES is now imported from const.py
 
 # =============================================================================
@@ -1097,6 +1117,12 @@ class LMStudioConversationEntity(ConversationEntity):
         text_lower = user_input.text.lower()
         if any(pattern in text_lower for pattern in MUSIC_COMMAND_PATTERNS):
             _LOGGER.debug("Skipping native intent for music command: %s", user_input.text[:50])
+            return None
+
+        # Skip native intent for cover/blinds commands - HA native intents suck for these
+        # LLM handles fuzzy matching way better (e.g., "open master shade 3")
+        if any(pattern in text_lower for pattern in COVER_COMMAND_PATTERNS):
+            _LOGGER.debug("Skipping native intent for cover command: %s", user_input.text[:50])
             return None
 
         try:
