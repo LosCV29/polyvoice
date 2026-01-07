@@ -884,7 +884,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             description = "No aliases configured. Add your first alias below."
 
         # Build select options for existing aliases
-        select_options = [selector.SelectOptionDict(value="", label="-- Add New --")]
+        select_options = [selector.SelectOptionDict(value="", label="(none - add new below)")]
         for alias_name in aliases_dict.keys():
             select_options.append(selector.SelectOptionDict(value=alias_name, label=f"{alias_name} → {aliases_dict[alias_name]}"))
 
@@ -988,7 +988,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             description = "No room mappings configured. Add your first room below."
 
         # Build select options for existing rooms
-        select_options = [selector.SelectOptionDict(value="", label="-- Add New --")]
+        select_options = [selector.SelectOptionDict(value="", label="(none - add new below)")]
         for room_name in rooms_dict.keys():
             select_options.append(selector.SelectOptionDict(value=room_name, label=f"{room_name} → {rooms_dict[room_name]}"))
 
