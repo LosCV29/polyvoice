@@ -133,7 +133,13 @@ def _is_word_match(query: str, target: str) -> bool:
     target_words = set(target.lower().split())
 
     # Common words that shouldn't trigger matches by themselves
-    common_words = {"room", "light", "lights", "the", "a", "an", "my", "in", "on", "at", "to", "for", "of"}
+    # Includes location modifiers that appear in many device names
+    common_words = {
+        "room", "light", "lights", "lamp", "lamps",
+        "the", "a", "an", "my", "in", "on", "at", "to", "for", "of",
+        "living", "dining", "bed", "bath", "kitchen", "front", "back", "side",
+        "master", "guest", "kids", "office", "garage", "patio", "porch", "hallway",
+    }
 
     # Get meaningful words (exclude common words)
     query_meaningful = query_words - common_words
@@ -234,10 +240,18 @@ def find_entity_by_name(
     OPTIMIZED: Single-pass search with priority queue instead of 6 separate passes.
     ENHANCED: Supports cover synonyms (blind/shade/curtain/cover are interchangeable)
     """
+    # ALWAYS try the exact original query first before any variations
+    result = _find_entity_by_query(hass, query, device_aliases)
+    if result[0] is not None:
+        return result
+
     # Generate synonym variations for cover-related queries
     query_variations = normalize_cover_query(query)
 
     for query_var in query_variations:
+        # Skip the original query since we already tried it
+        if query_var.lower() == query.lower():
+            continue
         result = _find_entity_by_query(hass, query_var, device_aliases)
         if result[0] is not None:
             return result
