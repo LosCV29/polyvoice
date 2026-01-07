@@ -5,15 +5,22 @@ from typing import Final
 
 DOMAIN: Final = "polyvoice"
 
-
-def get_version() -> str:
-    """Get version from manifest.json - reads fresh each time."""
+# Cache version at module load time to avoid blocking calls in async context
+def _load_version() -> str:
+    """Load version from manifest.json once at startup."""
     try:
         manifest_path = Path(__file__).parent / "manifest.json"
         with open(manifest_path) as f:
             return json.load(f).get("version", "unknown")
     except Exception:
         return "unknown"
+
+VERSION: Final = _load_version()
+
+
+def get_version() -> str:
+    """Get cached version."""
+    return VERSION
 
 # =============================================================================
 # LLM PROVIDER SETTINGS
