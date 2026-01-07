@@ -118,8 +118,9 @@ def _strip_stopwords(query: str) -> str:
 def _is_word_match(query: str, target: str) -> bool:
     """Check if query and target share meaningful words (not just substrings).
 
-    Prevents false positives like "back door" matching "ac" (air conditioning)
-    because "ac" is a substring of "back".
+    Prevents false positives like:
+    - "back door" matching "ac" (substring in word)
+    - "living room shade" matching "dining room light" (only "room" overlaps)
 
     Args:
         query: User's search query
@@ -131,8 +132,16 @@ def _is_word_match(query: str, target: str) -> bool:
     query_words = set(query.lower().split())
     target_words = set(target.lower().split())
 
-    # Check for word overlap
-    if query_words & target_words:
+    # Common words that shouldn't trigger matches by themselves
+    common_words = {"room", "light", "lights", "the", "a", "an", "my", "in", "on", "at", "to", "for", "of"}
+
+    # Get meaningful words (exclude common words)
+    query_meaningful = query_words - common_words
+    target_meaningful = target_words - common_words
+
+    # Check for meaningful word overlap (not just "room" or "light")
+    meaningful_overlap = query_meaningful & target_meaningful
+    if meaningful_overlap:
         return True
 
     # Check if multi-word target is contained in query or vice versa
