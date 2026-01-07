@@ -4068,7 +4068,7 @@ class LMStudioConversationEntity(ConversationEntity):
                     for player in target_players:
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
-                            {"media_id": query, "media_type": media_type, "enqueue": "replace"},
+                            {"media_id": query, "media_type": media_type, "enqueue": "replace", "radio_mode": False},
                             target={"entity_id": player},
                             blocking=True
                         )
@@ -4257,14 +4257,15 @@ class LMStudioConversationEntity(ConversationEntity):
                             playlist_name = query
                             playlist_uri = query
 
-                        # Play the playlist with shuffle
+                        # Play the playlist with shuffle (explicitly disable radio mode)
                         player = target_players[0]
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
                             {
                                 "media_id": playlist_uri,
                                 "media_type": "playlist",
-                                "enqueue": "replace"
+                                "enqueue": "replace",
+                                "radio_mode": False
                             },
                             target={"entity_id": player},
                             blocking=True
