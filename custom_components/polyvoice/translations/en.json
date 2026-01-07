@@ -87,14 +87,14 @@
           "thermostat_temp_step": "Temperature Adjustment Step"
         }
       },
-      "aliases": {
-        "title": "LLM Fallback Aliases",
-        "description": "{aliases}",
+      "smart_devices": {
+        "title": "Smart Devices",
+        "description": "{devices}",
         "data": {
-          "select_alias": "",
-          "alias_entity": "Entity",
-          "alias_name": "Alias Name (what you'll say)",
-          "action": "Action"
+          "action": "Action",
+          "select_device": "Select Device or Alias",
+          "new_entity": "Entity to Add",
+          "new_alias": "Voice Alias (what you'll say)"
         }
       },
       "music_rooms": {

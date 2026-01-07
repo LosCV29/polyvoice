@@ -917,8 +917,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
             elif tool_name == "control_device":
                 return await device_tool.control_device(
-                    arguments, self.hass, self.device_aliases,
-                    self.llm_controlled_entities
+                    arguments, self.hass, self.device_aliases
                 )
 
             elif tool_name == "control_music":

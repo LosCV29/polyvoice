@@ -432,9 +432,8 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "model": "Model Settings",
                 "features": "Enable/Disable Features",
                 "entities": "PolyVoice Default Entities",
-                "aliases": "LLM Fallback Aliases",
+                "smart_devices": "Smart Devices",
                 "music_rooms": "Music Room Mapping",
-                "llm_devices": "LLM-Controlled Devices",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
                 "intents": "Excluded Intents",
@@ -796,14 +795,25 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_aliases(
+    async def async_step_smart_devices(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle device aliases configuration with edit/delete support."""
+        """Handle unified smart device configuration with aliases.
+
+        Combines LLM-controlled devices and device aliases into one UI.
+        Users select entities for smart/LLM control and add voice aliases.
+        """
         current = {**self._entry.data, **self._entry.options}
-        current_aliases = current.get(CONF_DEVICE_ALIASES, "")
+
+        # Parse current LLM-controlled entities
+        current_llm = current.get(CONF_LLM_CONTROLLED_ENTITIES, "")
+        if isinstance(current_llm, str) and current_llm:
+            llm_entities = set(e.strip() for e in current_llm.split("\n") if e.strip())
+        else:
+            llm_entities = set()
 
         # Parse current aliases into dict {alias_name: entity_id}
+        current_aliases = current.get(CONF_DEVICE_ALIASES, "")
         aliases_dict = {}
         if current_aliases:
             for line in current_aliases.split("\n"):
@@ -812,88 +822,129 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     alias_name, entity_id = line.split(": ", 1)
                     aliases_dict[alias_name.strip()] = entity_id.strip()
 
-        if user_input is not None:
-            selected = user_input.get("select_alias", "")
-            new_entity = user_input.get("alias_entity", "")
-            new_alias = user_input.get("alias_name", "").strip()
-            action = user_input.get("action", "add")
+        # Build reverse lookup: entity_id -> list of aliases
+        entity_aliases: dict[str, list[str]] = {}
+        for alias, eid in aliases_dict.items():
+            if eid not in entity_aliases:
+                entity_aliases[eid] = []
+            entity_aliases[eid].append(alias)
 
-            if action == "delete" and selected:
-                # Delete selected alias
-                if selected in aliases_dict:
-                    del aliases_dict[selected]
-            elif action == "update" and selected and new_entity:
-                # Update selected alias (delete old, add new)
-                if selected in aliases_dict:
-                    del aliases_dict[selected]
-                alias_key = new_alias if new_alias else selected
-                aliases_dict[alias_key] = new_entity
-            elif action == "add" and new_entity and new_alias:
-                # Add new alias
-                aliases_dict[new_alias] = new_entity
-            elif not selected and not new_entity and not new_alias:
+        if user_input is not None:
+            action = user_input.get("action", "add_device")
+            selected_device = user_input.get("select_device", "")
+            new_entity = user_input.get("new_entity", "")
+            new_alias = user_input.get("new_alias", "").strip()
+
+            if action == "add_device" and new_entity:
+                # Add new entity to LLM-controlled list
+                llm_entities.add(new_entity)
+                # If alias provided, add it too
+                if new_alias:
+                    aliases_dict[new_alias] = new_entity
+
+            elif action == "add_alias" and selected_device and new_alias:
+                # Add alias for existing smart device
+                aliases_dict[new_alias] = selected_device
+
+            elif action == "remove_device" and selected_device:
+                # Remove device from LLM control and all its aliases
+                llm_entities.discard(selected_device)
+                # Remove all aliases pointing to this entity
+                aliases_dict = {k: v for k, v in aliases_dict.items() if v != selected_device}
+
+            elif action == "remove_alias" and selected_device:
+                # Remove just the selected alias (selected_device is actually alias name here)
+                if selected_device in aliases_dict:
+                    del aliases_dict[selected_device]
+
+            elif not new_entity and not new_alias and not selected_device:
                 # Empty submit - return to menu
                 return self.async_create_entry(title="", data=self._entry.options)
 
-            # Save updated aliases
-            if aliases_dict:
-                updated_aliases = "\n".join([f"{k}: {v}" for k, v in aliases_dict.items()])
-            else:
-                updated_aliases = ""
+            # Save updated configs
+            updated_llm = "\n".join(sorted(llm_entities)) if llm_entities else ""
+            updated_aliases = "\n".join([f"{k}: {v}" for k, v in aliases_dict.items()]) if aliases_dict else ""
 
-            new_options = {**self._entry.options, CONF_DEVICE_ALIASES: updated_aliases}
+            new_options = {
+                **self._entry.options,
+                CONF_LLM_CONTROLLED_ENTITIES: updated_llm,
+                CONF_DEVICE_ALIASES: updated_aliases,
+            }
             self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-            current_aliases = updated_aliases
-            # Rebuild dict for display
+
+            # Rebuild for display
+            llm_entities = set(e.strip() for e in updated_llm.split("\n") if e.strip()) if updated_llm else set()
             aliases_dict = {}
-            if current_aliases:
-                for line in current_aliases.split("\n"):
+            if updated_aliases:
+                for line in updated_aliases.split("\n"):
                     line = line.strip()
                     if ": " in line:
                         alias_name, entity_id = line.split(": ", 1)
                         aliases_dict[alias_name.strip()] = entity_id.strip()
+            entity_aliases = {}
+            for alias, eid in aliases_dict.items():
+                if eid not in entity_aliases:
+                    entity_aliases[eid] = []
+                entity_aliases[eid].append(alias)
 
-        # Build description showing current aliases
-        if aliases_dict:
-            alias_display = "\n".join([f"• {k} → {v}" for k, v in aliases_dict.items()])
-            description = f"**Current aliases:**\n{alias_display}\n\nSelect one to edit/delete, or add a new one below."
+        # Build description showing current smart devices
+        if llm_entities:
+            lines = []
+            for eid in sorted(llm_entities):
+                state = self.hass.states.get(eid)
+                friendly = state.attributes.get("friendly_name", eid) if state else eid
+                aliases = entity_aliases.get(eid, [])
+                if aliases:
+                    alias_str = ", ".join(f'"{a}"' for a in aliases)
+                    lines.append(f"• **{friendly}** ({eid})\n  Aliases: {alias_str}")
+                else:
+                    lines.append(f"• **{friendly}** ({eid})\n  No aliases")
+            description = "**Smart Devices (LLM-controlled):**\n" + "\n".join(lines)
         else:
-            description = "No aliases configured. Add your first alias below."
+            description = "No smart devices configured. Add devices below to enable voice aliases and smart matching."
 
-        # Build select options for existing aliases (no "none" option - just leave empty to add new)
-        select_options = []
-        for alias_name in aliases_dict.keys():
-            select_options.append(selector.SelectOptionDict(value=alias_name, label=f"{alias_name} → {aliases_dict[alias_name]}"))
+        # Build select options for existing smart devices
+        device_options = []
+        for eid in sorted(llm_entities):
+            state = self.hass.states.get(eid)
+            friendly = state.attributes.get("friendly_name", eid) if state else eid
+            device_options.append(selector.SelectOptionDict(value=eid, label=f"{friendly} ({eid})"))
+
+        # Build select options for existing aliases (for removal)
+        alias_options = []
+        for alias_name, eid in aliases_dict.items():
+            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f'"{alias_name}" → {eid}'))
 
         return self.async_show_form(
-            step_id="aliases",
-            description_placeholders={"aliases": description},
+            step_id="smart_devices",
+            description_placeholders={"devices": description},
             data_schema=vol.Schema(
                 {
-                    vol.Optional("select_alias"): selector.SelectSelector(
+                    vol.Optional("action", default="add_device"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=select_options,
+                            options=[
+                                selector.SelectOptionDict(value="add_device", label="Add Smart Device"),
+                                selector.SelectOptionDict(value="add_alias", label="Add Alias to Device"),
+                                selector.SelectOptionDict(value="remove_device", label="Remove Device"),
+                                selector.SelectOptionDict(value="remove_alias", label="Remove Alias"),
+                            ],
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Optional("alias_entity"): selector.EntitySelector(
+                    vol.Optional("select_device"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=device_options + alias_options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ) if device_options or alias_options else selector.TextSelector(),
+                    vol.Optional("new_entity"): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             multiple=False,
                         )
                     ),
-                    vol.Optional("alias_name"): selector.TextSelector(
+                    vol.Optional("new_alias"): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
-                        )
-                    ),
-                    vol.Optional("action", default="add"): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(value="add", label="Add New"),
-                                selector.SelectOptionDict(value="update", label="Update Selected"),
-                                selector.SelectOptionDict(value="delete", label="Delete Selected"),
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
                 }
@@ -1003,53 +1054,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 }
             ),
-        )
-
-    async def async_step_llm_devices(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle LLM-controlled devices configuration.
-
-        Devices in this list will always be handled by the LLM instead of native intents.
-        This allows fuzzy matching and smarter control for specific devices like blinds.
-        """
-        if user_input is not None:
-            # Convert entity list to newline-separated string
-            llm_entities = user_input.get(CONF_LLM_CONTROLLED_ENTITIES, [])
-            if isinstance(llm_entities, list):
-                processed_value = "\n".join(llm_entities)
-            else:
-                processed_value = llm_entities
-
-            new_options = {**self._entry.options, CONF_LLM_CONTROLLED_ENTITIES: processed_value}
-            return self.async_create_entry(title="", data=new_options)
-
-        current = {**self._entry.data, **self._entry.options}
-
-        # Parse current LLM-controlled entities back to list
-        current_entities = current.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)
-        if isinstance(current_entities, str) and current_entities:
-            current_entities = [e.strip() for e in current_entities.split("\n") if e.strip()]
-        elif not current_entities:
-            current_entities = []
-
-        return self.async_show_form(
-            step_id="llm_devices",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_LLM_CONTROLLED_ENTITIES,
-                        default=current_entities,
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            multiple=True,
-                        )
-                    ),
-                }
-            ),
-            description_placeholders={
-                "description": "Select devices that should always be controlled by the LLM instead of native Home Assistant intents. This enables fuzzy name matching (e.g., 'blinds' matches 'shade') and smarter control logic.",
-            },
         )
 
     async def async_step_api_keys(

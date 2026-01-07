@@ -89,14 +89,14 @@
           "thermostat_temp_step": "Temperature Adjustment Step"
         }
       },
-      "aliases": {
-        "title": "LLM Fallback Aliases",
-        "description": "{aliases}",
+      "smart_devices": {
+        "title": "Smart Devices",
+        "description": "{devices}",
         "data": {
-          "select_alias": "",
-          "alias_entity": "Entity",
-          "alias_name": "Alias Name (what you'll say)",
-          "action": "Action"
+          "action": "Action",
+          "select_device": "Select Device or Alias",
+          "new_entity": "Entity to Add",
+          "new_alias": "Voice Alias (what you'll say)"
         }
       },
       "music_rooms": {
@@ -107,13 +107,6 @@
           "room_player": "Media Player",
           "room_name": "Room Name (e.g., living room, kitchen)",
           "action": "Action"
-        }
-      },
-      "llm_devices": {
-        "title": "LLM-Controlled Devices",
-        "description": "Select devices that should always be controlled by the LLM instead of native Home Assistant intents. This enables fuzzy name matching (e.g., 'blinds' matches 'shade') and smarter control logic for these specific devices.",
-        "data": {
-          "llm_controlled_entities": "LLM-Controlled Devices"
         }
       },
       "api_keys": {
