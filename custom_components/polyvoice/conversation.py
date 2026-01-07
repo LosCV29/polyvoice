@@ -44,6 +44,7 @@ from .const import (
     CONF_ENABLE_THERMOSTAT,
     CONF_ENABLE_WEATHER,
     CONF_ENABLE_WIKIPEDIA,
+    CONF_EXCLUDED_ENTITIES,
     CONF_EXCLUDED_INTENTS,
     CONF_GOOGLE_PLACES_API_KEY,
     CONF_LLM_CONTROLLED_ENTITIES,
@@ -260,6 +261,7 @@ class LMStudioConversationEntity(ConversationEntity):
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
         self.llm_controlled_entities = set(parse_list_config(config.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)))
+        self.excluded_entities = set(parse_list_config(config.get(CONF_EXCLUDED_ENTITIES, "")))
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
 
         # Thermostat settings
@@ -327,12 +329,13 @@ class LMStudioConversationEntity(ConversationEntity):
             self._music_controller = MusicController(self.hass, self.room_player_mapping)
 
         # Register intent handlers for excluded intents AND/OR entity-based control
-        if self.excluded_intents or self.llm_controlled_entities:
+        if self.excluded_intents or self.llm_controlled_entities or self.excluded_entities:
             self._original_intent_handlers = register_intent_handlers(
                 self.hass,
                 self.entity_id,
                 self.excluded_intents,
                 self.llm_controlled_entities,
+                self.excluded_entities,
             )
 
         # Listen for config updates

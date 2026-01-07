@@ -3,9 +3,11 @@
 This module intercepts native Home Assistant intents and routes them
 through PolyVoice for LLM-controlled processing.
 
-Interception happens when:
-1. The intent type is in the user's excluded_intents list, OR
-2. The target entity is in the user's llm_controlled_entities (Smart Devices)
+Interception logic (in order):
+1. If target entity is in excluded_entities → NEVER intercept (use native HA)
+2. If intent type is in excluded_intents → intercept to LLM
+3. If target entity is in llm_controlled_entities (Smart Devices) → intercept to LLM
+4. Otherwise → use native HA
 """
 from __future__ import annotations
 
@@ -22,15 +24,72 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Intents that CAN be intercepted by PolyVoice
+# Regex patterns to extract device names from slot strings as last resort
+SLOT_PATTERNS = [
+    r"'text':\s*'([^']+)'",
+    r"'name':\s*'([^']+)'",
+    r"'value':\s*'([^']+)'",
+]
+
+# ALL intents that CAN be intercepted by PolyVoice
+# This comprehensive list allows users to exclude any native HA intent
 INTERCEPTABLE_INTENTS = frozenset([
+    # Basic device control
     "HassTurnOn",
     "HassTurnOff",
     "HassToggle",
+    # Lights
     "HassLightSet",
+    # Covers (blinds, shades, curtains, garage doors)
     "HassOpenCover",
     "HassCloseCover",
     "HassSetPosition",
+    # Climate
+    "HassClimateGetTemperature",
+    "HassClimateSetTemperature",
+    # State queries
+    "HassGetState",
+    # Fan control
+    "HassFanSetSpeed",
+    # Humidifier
+    "HassHumidifierMode",
+    "HassHumidifierSetpoint",
+    # Media player
+    "HassMediaNext",
+    "HassMediaPause",
+    "HassMediaPlayerMute",
+    "HassMediaPlayerUnmute",
+    "HassMediaPrevious",
+    "HassMediaSearchAndPlay",
+    "HassMediaUnpause",
+    "HassSetVolume",
+    "HassSetVolumeRelative",
+    # Vacuum/Lawn mower
+    "HassVacuumReturnToBase",
+    "HassVacuumStart",
+    "HassLawnMowerDock",
+    "HassLawnMowerStartMowing",
+    # Timers
+    "HassStartTimer",
+    "HassCancelTimer",
+    "HassCancelAllTimers",
+    "HassIncreaseTimer",
+    "HassDecreaseTimer",
+    "HassPauseTimer",
+    "HassUnpauseTimer",
+    "HassTimerStatus",
+    # Lists
+    "HassListAddItem",
+    "HassListCompleteItem",
+    "HassShoppingListAddItem",
+    "HassShoppingListCompleteItem",
+    # Misc
+    "HassBroadcast",
+    "HassGetCurrentDate",
+    "HassGetCurrentTime",
+    "HassGetWeather",
+    "HassNevermind",
+    "HassRespond",
 ])
 
 
@@ -44,6 +103,7 @@ class PolyVoiceIntentHandler(IntentHandler):
         conversation_entity_id: str,
         excluded_intents: set[str],
         llm_controlled_entities: set[str],
+        excluded_entities: set[str],
         original_handler: IntentHandler | None = None,
     ):
         """Initialize the intent handler.
@@ -53,7 +113,8 @@ class PolyVoiceIntentHandler(IntentHandler):
             hass: Home Assistant instance
             conversation_entity_id: Entity ID of the PolyVoice conversation entity
             excluded_intents: Intent types to always intercept
-            llm_controlled_entities: Entity IDs to always route to LLM
+            llm_controlled_entities: Entity IDs to always route to LLM (Smart Devices)
+            excluded_entities: Entity IDs to NEVER intercept (always use native HA)
             original_handler: The original handler to fall back to if needed
         """
         self._intent_type = intent_type
@@ -61,6 +122,7 @@ class PolyVoiceIntentHandler(IntentHandler):
         self._conversation_entity_id = conversation_entity_id
         self._excluded_intents = excluded_intents
         self._llm_controlled_entities = llm_controlled_entities
+        self._excluded_entities = excluded_entities
         self._original_handler = original_handler
 
     @property
@@ -89,26 +151,26 @@ class PolyVoiceIntentHandler(IntentHandler):
         if not device_name:
             return None
 
-        _LOGGER.debug("Looking for Smart Device matching '%s'", device_name)
+        _LOGGER.debug("Looking for entity matching '%s'", device_name)
 
-        # Build aliases dict from llm_controlled_entities for fuzzy matching
-        # This allows the fuzzy matcher to prioritize our controlled entities
-        smart_device_aliases = {}
-        for entity_id in self._llm_controlled_entities:
+        # Build aliases dict combining excluded_entities and llm_controlled_entities
+        # This allows the fuzzy matcher to find entities we care about
+        all_controlled_entities = self._excluded_entities | self._llm_controlled_entities
+        entity_aliases = {}
+        for entity_id in all_controlled_entities:
             state = self._hass.states.get(entity_id)
             if state:
                 friendly = state.attributes.get("friendly_name", "").lower()
                 if friendly:
-                    smart_device_aliases[friendly] = entity_id
+                    entity_aliases[friendly] = entity_id
 
         # Use PolyVoice's fuzzy matching (handles synonyms like blind/shade)
         matched_id, matched_name = find_entity_by_name(
-            self._hass, device_name, smart_device_aliases
+            self._hass, device_name, entity_aliases
         )
 
-        # Only return if the matched entity is in our controlled list
-        if matched_id and matched_id in self._llm_controlled_entities:
-            _LOGGER.info("Fuzzy matched '%s' to Smart Device %s", device_name, matched_id)
+        if matched_id:
+            _LOGGER.debug("Fuzzy matched '%s' to entity %s", device_name, matched_id)
             return matched_id
 
         return None
@@ -118,17 +180,24 @@ class PolyVoiceIntentHandler(IntentHandler):
 
         Returns True if:
         1. The intent type is in excluded_intents, OR
-        2. The target entity is in llm_controlled_entities
+        2. The target entity is in excluded_entities, OR
+        3. The target entity is in llm_controlled_entities (Smart Devices)
         """
         # Always intercept if intent type is excluded
         if self._intent_type in self._excluded_intents:
-            _LOGGER.debug("Intercepting %s - intent type is excluded", self._intent_type)
+            _LOGGER.debug("Intercepting %s - intent type is in excluded_intents", self._intent_type)
             return True
 
-        # Check if target entity is in LLM-controlled list
-        if self._llm_controlled_entities:
-            target_entity = self._get_target_entity_id(intent)
-            if target_entity and target_entity in self._llm_controlled_entities:
+        # Check if target entity is in excluded_entities or llm_controlled_entities
+        target_entity = self._get_target_entity_id(intent)
+        if target_entity:
+            if target_entity in self._excluded_entities:
+                _LOGGER.info(
+                    "Intercepting %s for entity %s - entity is in excluded_entities",
+                    self._intent_type, target_entity
+                )
+                return True
+            if target_entity in self._llm_controlled_entities:
                 _LOGGER.info(
                     "Intercepting %s for entity %s - entity is in Smart Devices list",
                     self._intent_type, target_entity
@@ -246,13 +315,62 @@ class PolyVoiceIntentHandler(IntentHandler):
 
         # Reconstruct a natural language command
         action_map = {
+            # Basic control
             "HassTurnOn": "turn on",
             "HassTurnOff": "turn off",
             "HassToggle": "toggle",
+            # Lights
             "HassLightSet": "set",
+            # Covers
             "HassOpenCover": "open",
             "HassCloseCover": "close",
             "HassSetPosition": "set position for",
+            # Climate
+            "HassClimateGetTemperature": "get temperature for",
+            "HassClimateSetTemperature": "set temperature for",
+            # State
+            "HassGetState": "get state of",
+            # Fan
+            "HassFanSetSpeed": "set fan speed for",
+            # Humidifier
+            "HassHumidifierMode": "set humidifier mode for",
+            "HassHumidifierSetpoint": "set humidity for",
+            # Media
+            "HassMediaNext": "skip to next on",
+            "HassMediaPause": "pause",
+            "HassMediaPlayerMute": "mute",
+            "HassMediaPlayerUnmute": "unmute",
+            "HassMediaPrevious": "previous track on",
+            "HassMediaSearchAndPlay": "play music on",
+            "HassMediaUnpause": "resume",
+            "HassSetVolume": "set volume for",
+            "HassSetVolumeRelative": "adjust volume for",
+            # Vacuum/Lawn mower
+            "HassVacuumReturnToBase": "send vacuum home",
+            "HassVacuumStart": "start vacuuming with",
+            "HassLawnMowerDock": "dock the lawn mower",
+            "HassLawnMowerStartMowing": "start mowing with",
+            # Timers
+            "HassStartTimer": "start a timer for",
+            "HassCancelTimer": "cancel timer",
+            "HassCancelAllTimers": "cancel all timers",
+            "HassIncreaseTimer": "add time to timer",
+            "HassDecreaseTimer": "reduce time on timer",
+            "HassPauseTimer": "pause timer",
+            "HassUnpauseTimer": "resume timer",
+            "HassTimerStatus": "check timer status",
+            # Lists
+            "HassListAddItem": "add to list",
+            "HassListCompleteItem": "complete item on list",
+            "HassShoppingListAddItem": "add to shopping list",
+            "HassShoppingListCompleteItem": "complete shopping list item",
+            # Misc
+            "HassBroadcast": "broadcast",
+            "HassGetCurrentDate": "get current date",
+            "HassGetCurrentTime": "get current time",
+            "HassGetWeather": "get weather",
+            "HassNevermind": "cancel",
+            "HassRespond": "respond",
         }
 
         action = action_map.get(self._intent_type, self._intent_type.lower().replace("hass", ""))
@@ -265,19 +383,21 @@ def register_intent_handlers(
     conversation_entity_id: str,
     excluded_intents: set[str],
     llm_controlled_entities: set[str],
+    excluded_entities: set[str],
 ) -> dict[str, IntentHandler]:
     """Register PolyVoice handlers for interceptable intents.
 
-    Handlers are registered for ALL interceptable intents, but only actually
-    intercept when:
-    1. The intent type is in excluded_intents, OR
-    2. The target entity is in llm_controlled_entities
+    Handlers are registered when:
+    - excluded_intents is set: registers handlers for those specific intent types
+    - llm_controlled_entities or excluded_entities is set: registers handlers for ALL
+      interceptable intents to enable per-entity routing
 
     Args:
         hass: Home Assistant instance
         conversation_entity_id: Entity ID of the PolyVoice conversation entity
         excluded_intents: Set of intent types to always intercept
-        llm_controlled_entities: Set of entity IDs to always route to LLM
+        llm_controlled_entities: Set of entity IDs to always route to LLM (Smart Devices)
+        excluded_entities: Set of entity IDs to always route to LLM
 
     Returns:
         Dict of intent_type -> original_handler for later restoration
@@ -286,14 +406,25 @@ def register_intent_handlers(
 
     original_handlers: dict[str, IntentHandler] = {}
 
-    # Register handlers for ALL interceptable intents if we have entity-based control
-    # This allows per-entity interception even for intents not in excluded_intents
-    intents_to_register = INTERCEPTABLE_INTENTS if llm_controlled_entities else excluded_intents
+    # Build set of intents to register:
+    # - All excluded_intents (user explicitly wants these intercepted)
+    # - All INTERCEPTABLE_INTENTS if we have entity-based control
+    intents_to_register: set[str] = set()
+
+    # Always register excluded_intents (if they're interceptable)
+    for intent_type in excluded_intents:
+        if intent_type in INTERCEPTABLE_INTENTS:
+            intents_to_register.add(intent_type)
+        else:
+            _LOGGER.warning(
+                "Intent %s is not interceptable by PolyVoice - skipping", intent_type
+            )
+
+    # If we have entity-based control, register ALL interceptable intents
+    if llm_controlled_entities or excluded_entities:
+        intents_to_register.update(INTERCEPTABLE_INTENTS)
 
     for intent_type in intents_to_register:
-        if intent_type not in INTERCEPTABLE_INTENTS:
-            continue
-
         # Get original handler if it exists
         original = intent_helpers.async_get(hass).get(intent_type)
 
@@ -304,6 +435,7 @@ def register_intent_handlers(
             conversation_entity_id=conversation_entity_id,
             excluded_intents=excluded_intents,
             llm_controlled_entities=llm_controlled_entities,
+            excluded_entities=excluded_entities,
             original_handler=original,
         )
         intent_helpers.async_register(hass, handler)

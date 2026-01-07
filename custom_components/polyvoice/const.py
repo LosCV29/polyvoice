@@ -233,6 +233,7 @@ DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
 # NATIVE INTENTS (with LLM fallback)
 # =============================================================================
 CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
+CONF_EXCLUDED_ENTITIES: Final = "excluded_entities"
 
 DEFAULT_EXCLUDED_INTENTS: Final = [
     "HassGetState",           # Use check_device_status for richer responses

@@ -88,7 +88,7 @@
         }
       },
       "smart_devices": {
-        "title": "Smart Devices",
+        "title": "Smart Devices (with Aliases)",
         "description": "{devices}",
         "data": {
           "action": "Action",
@@ -96,6 +96,15 @@
           "select_alias": "Select Alias",
           "new_entity": "New Device",
           "new_alias": "Voice Alias (what you'll say)"
+        }
+      },
+      "excluded_entities": {
+        "title": "LLM-Only Entities",
+        "description": "{entities}",
+        "data": {
+          "action": "Action",
+          "select_entity": "Select Entity to Remove",
+          "new_entity": "Add Entity (always routes to LLM)"
         }
       },
       "music_rooms": {
