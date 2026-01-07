@@ -303,7 +303,8 @@ async def get_sports_info(
         result["response_text"] = ". ".join(response_parts) if response_parts else f"No game info found for {full_name}"
 
         _LOGGER.info("Sports info for %s: %s", full_name, result.get("response_text", ""))
-        return result
+        # Return only response_text to prevent LLM from reformatting dates
+        return {"response_text": result["response_text"], "team": result.get("team", "")}
 
     except Exception as err:
         _LOGGER.error("Sports API error: %s", err, exc_info=True)
