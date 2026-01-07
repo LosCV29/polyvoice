@@ -4254,35 +4254,39 @@ class LMStudioConversationEntity(ConversationEntity):
                         # Default to playlist type
                         media_type_to_use = "playlist"
 
-                        # If no playlist found, try artist instead
+                        # If no playlist found, search for tracks by artist instead
+                        # (playing artist directly triggers "artist radio" which we don't want)
                         if not playlist_uri:
-                            _LOGGER.info("No playlist found, searching for artist: %s", query)
-                            artist_result = await self.hass.services.async_call(
+                            _LOGGER.info("No playlist found, searching for tracks by: %s", query)
+                            track_result = await self.hass.services.async_call(
                                 "music_assistant", "search",
                                 {
                                     "config_entry_id": ma_config_entry_id,
                                     "name": query,
-                                    "media_type": ["artist"],
-                                    "limit": 1
+                                    "media_type": ["track"],
+                                    "limit": 50  # Get up to 50 tracks to shuffle
                                 },
                                 blocking=True,
                                 return_response=True
                             )
-                            if artist_result:
-                                artists = []
-                                if isinstance(artist_result, dict):
-                                    artists = artist_result.get("artists", [])
-                                elif isinstance(artist_result, list):
-                                    artists = artist_result
-                                if artists:
-                                    playlist_name = artists[0].get("name", query)
-                                    playlist_uri = artists[0].get("uri") or artists[0].get("media_id")
-                                    media_type_to_use = "artist"
-                                    _LOGGER.info("Found artist: %s, playing as artist (not radio)", playlist_name)
+                            if track_result:
+                                tracks = []
+                                if isinstance(track_result, dict):
+                                    tracks = track_result.get("tracks", [])
+                                elif isinstance(track_result, list):
+                                    tracks = track_result
+                                if tracks:
+                                    # Get URIs for all tracks
+                                    track_uris = [t.get("uri") or t.get("media_id") for t in tracks if t.get("uri") or t.get("media_id")]
+                                    if track_uris:
+                                        playlist_name = f"{query} tracks"
+                                        playlist_uri = track_uris  # Pass list of track URIs
+                                        media_type_to_use = "track"
+                                        _LOGGER.info("Found %d tracks for: %s", len(track_uris), query)
 
                         # Fail if nothing found
                         if not playlist_uri:
-                            return {"error": f"Could not find playlist or artist matching '{query}'"}
+                            return {"error": f"Could not find playlist or tracks matching '{query}'"}
 
                         # Play with shuffle (explicitly disable radio mode)
                         player = target_players[0]
