@@ -72,6 +72,7 @@ from .const import (
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
+    CONF_LLM_CONTROLLED_ENTITIES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
@@ -104,6 +105,7 @@ from .const import (
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_CAMERA_ENTITIES,
     DEFAULT_BLINDS_FAVORITE_BUTTONS,
+    DEFAULT_LLM_CONTROLLED_ENTITIES,
     # Thermostat defaults
     DEFAULT_THERMOSTAT_MIN_TEMP,
     DEFAULT_THERMOSTAT_MAX_TEMP,
@@ -434,6 +436,7 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "entities": "PolyVoice Default Entities",
                 "aliases": "LLM Fallback Aliases",
                 "music_rooms": "Music Room Mapping",
+                "llm_devices": "LLM-Controlled Devices",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
                 "intents": "Excluded Intents",
@@ -1026,6 +1029,53 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 }
             ),
+        )
+
+    async def async_step_llm_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle LLM-controlled devices configuration.
+
+        Devices in this list will always be handled by the LLM instead of native intents.
+        This allows fuzzy matching and smarter control for specific devices like blinds.
+        """
+        if user_input is not None:
+            # Convert entity list to newline-separated string
+            llm_entities = user_input.get(CONF_LLM_CONTROLLED_ENTITIES, [])
+            if isinstance(llm_entities, list):
+                processed_value = "\n".join(llm_entities)
+            else:
+                processed_value = llm_entities
+
+            new_options = {**self._entry.options, CONF_LLM_CONTROLLED_ENTITIES: processed_value}
+            return self.async_create_entry(title="", data=new_options)
+
+        current = {**self._entry.data, **self._entry.options}
+
+        # Parse current LLM-controlled entities back to list
+        current_entities = current.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)
+        if isinstance(current_entities, str) and current_entities:
+            current_entities = [e.strip() for e in current_entities.split("\n") if e.strip()]
+        elif not current_entities:
+            current_entities = []
+
+        return self.async_show_form(
+            step_id="llm_devices",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_LLM_CONTROLLED_ENTITIES,
+                        default=current_entities,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            multiple=True,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "description": "Select devices that should always be controlled by the LLM instead of native Home Assistant intents. This enables fuzzy name matching (e.g., 'blinds' matches 'shade') and smarter control logic.",
+            },
         )
 
     async def async_step_api_keys(

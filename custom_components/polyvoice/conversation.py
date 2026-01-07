@@ -77,6 +77,7 @@ from .const import (
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
     CONF_BLINDS_FAVORITE_BUTTONS,
+    CONF_LLM_CONTROLLED_ENTITIES,
     # Defaults
     DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
@@ -93,6 +94,7 @@ from .const import (
     DEFAULT_ENABLE_WIKIPEDIA,
     DEFAULT_ENABLE_MUSIC,
     DEFAULT_ROOM_PLAYER_MAPPING,
+    DEFAULT_LLM_CONTROLLED_ENTITIES,
     CAMERA_FRIENDLY_NAMES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
@@ -282,17 +284,93 @@ class PolyVoiceIntentHandler(intent.IntentHandler):
     When registered, this REPLACES the built-in HA intent handler for the given intent type.
     This allows PolyVoice to intercept commands that would otherwise be handled by HA's
     native intent system (which fires BEFORE the conversation agent is called).
+
+    If LLM-controlled entities are configured, only commands targeting those entities
+    are routed to the LLM - other commands fall through to the original handler.
     """
 
-    def __init__(self, intent_type: str, polyvoice_agent: "LMStudioConversationEntity") -> None:
+    def __init__(self, intent_type: str, polyvoice_agent: "LMStudioConversationEntity", original_handler: intent.IntentHandler | None = None) -> None:
         """Initialize the handler."""
         self.intent_type = intent_type
         self._agent = polyvoice_agent
+        self._original_handler = original_handler
         self.description = f"PolyVoice handler for {intent_type}"
 
+    def _extract_target_entities(self, intent_obj: intent.Intent) -> set[str]:
+        """Extract target entity IDs from the intent slots."""
+        entities = set()
+        slots = intent_obj.slots
+
+        # Check for direct entity references in slots
+        for slot_name in ["name", "entity", "entity_id", "targets"]:
+            slot = slots.get(slot_name, {})
+            if isinstance(slot, dict):
+                # Single entity
+                value = slot.get("value") or slot.get("text")
+                if value and "." in str(value):  # Looks like entity_id
+                    entities.add(str(value))
+            elif isinstance(slot, list):
+                # Multiple entities
+                for item in slot:
+                    if isinstance(item, dict):
+                        value = item.get("value") or item.get("text")
+                        if value and "." in str(value):
+                            entities.add(str(value))
+
+        # Also check intent_obj.targets if available (newer HA versions)
+        if hasattr(intent_obj, 'targets') and intent_obj.targets:
+            for target in intent_obj.targets:
+                if hasattr(target, 'entity_id') and target.entity_id:
+                    entities.add(target.entity_id)
+
+        return entities
+
+    def _should_use_llm(self, intent_obj: intent.Intent) -> bool:
+        """Determine if this intent should be handled by the LLM.
+
+        Returns True if:
+        - No LLM-controlled entities are configured (handle all excluded intents via LLM)
+        - OR any target entity is in the LLM-controlled entities list
+        """
+        llm_entities = self._agent.llm_controlled_entities
+
+        # If no LLM-controlled entities configured, handle ALL excluded intents via LLM
+        if not llm_entities:
+            return True
+
+        # Extract target entities from the intent
+        target_entities = self._extract_target_entities(intent_obj)
+
+        # If we couldn't extract entities, use LLM (safer)
+        if not target_entities:
+            _LOGGER.debug("Could not extract entities from intent, routing to LLM")
+            return True
+
+        # Check if any target entity is in the LLM-controlled list
+        matching = target_entities & llm_entities
+        if matching:
+            _LOGGER.debug("Target entity %s is LLM-controlled, routing to LLM", matching)
+            return True
+
+        _LOGGER.debug("Target entities %s not in LLM-controlled list %s, using native handler",
+                     target_entities, llm_entities)
+        return False
+
     async def async_handle(self, intent_obj: intent.Intent) -> intent.IntentResponse:
-        """Handle the intent by routing to PolyVoice LLM."""
+        """Handle the intent by routing to PolyVoice LLM or original handler."""
         _LOGGER.info("PolyVoice intercepting excluded intent: %s", self.intent_type)
+
+        # Check if we should use LLM for this specific intent
+        if not self._should_use_llm(intent_obj):
+            # Not an LLM-controlled entity, use original handler
+            if self._original_handler:
+                _LOGGER.info("Delegating to original handler for non-LLM-controlled entity")
+                return await self._original_handler.async_handle(intent_obj)
+            else:
+                # No original handler - create a generic response
+                response = intent_obj.create_response()
+                response.async_set_speech("I'm not sure how to handle that.")
+                return response
 
         # Get the original text from the intent
         original_text = intent_obj.text_input or ""
@@ -703,6 +781,10 @@ class LMStudioConversationEntity(ConversationEntity):
         self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
         _LOGGER.debug("Blinds favorite buttons: %s", self.blinds_favorite_buttons)
 
+        # LLM-controlled entities - devices that should always be handled by LLM instead of native intents
+        self.llm_controlled_entities = set(parse_list_config(config.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)))
+        _LOGGER.debug("LLM-controlled entities: %s", self.llm_controlled_entities)
+
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
 
         # Thermostat settings (user-configurable limits and step)
@@ -917,13 +999,15 @@ class LMStudioConversationEntity(ConversationEntity):
             self._original_intent_handlers[intent_type] = original_handler
 
             # Register our custom handler that routes to LLM
-            handler = PolyVoiceIntentHandler(intent_type, self)
+            # Pass the original handler so we can delegate for non-LLM-controlled entities
+            handler = PolyVoiceIntentHandler(intent_type, self, original_handler)
             intent.async_register(self.hass, handler)
 
             _LOGGER.info(
-                "Registered PolyVoice handler for %s (replaced: %s)",
+                "Registered PolyVoice handler for %s (replaced: %s, llm_entities: %s)",
                 intent_type,
-                original_handler.__class__.__name__ if original_handler else "None"
+                original_handler.__class__.__name__ if original_handler else "None",
+                len(self.llm_controlled_entities) if self.llm_controlled_entities else "all"
             )
 
     def _restore_original_intent_handlers(self) -> None:
@@ -955,17 +1039,19 @@ class LMStudioConversationEntity(ConversationEntity):
 
     async def _async_entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Handle config entry update."""
-        # Store old excluded intents to detect changes
+        # Store old values to detect changes
         old_excluded_intents = self.excluded_intents.copy() if self.excluded_intents else set()
+        old_llm_entities = self.llm_controlled_entities.copy() if self.llm_controlled_entities else set()
 
         self._update_from_config({**entry.data, **entry.options})
         self.async_write_ha_state()
 
-        # If excluded intents changed, update the handlers
-        if old_excluded_intents != self.excluded_intents:
+        # If excluded intents or LLM-controlled entities changed, update the handlers
+        if old_excluded_intents != self.excluded_intents or old_llm_entities != self.llm_controlled_entities:
             _LOGGER.info(
-                "Excluded intents changed from %s to %s - re-registering handlers",
-                old_excluded_intents, self.excluded_intents
+                "Intent config changed - re-registering handlers (intents: %s->%s, llm_entities: %s->%s)",
+                old_excluded_intents, self.excluded_intents,
+                old_llm_entities, self.llm_controlled_entities
             )
             # Restore original handlers first
             self._restore_original_intent_handlers()
