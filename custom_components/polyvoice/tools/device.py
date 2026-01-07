@@ -296,6 +296,7 @@ async def control_device(
     arguments: dict[str, Any],
     hass: "HomeAssistant",
     device_aliases: dict[str, str],
+    llm_controlled_entities: set[str] = None,
 ) -> dict[str, Any]:
     """Control smart home devices.
 
@@ -314,6 +315,7 @@ async def control_device(
         arguments: Tool arguments
         hass: Home Assistant instance
         device_aliases: Custom device name -> entity_id mapping
+        llm_controlled_entities: Set of entity_ids configured for LLM control
 
     Returns:
         Control result dict
@@ -469,9 +471,64 @@ async def control_device(
         if not entities_to_control:
             return {"error": f"No controllable devices found in area '{area_name}'."}
 
-    # Method 4: Fuzzy device name matching
+    # Method 4: Device name matching
     elif device_name:
-        found_entity_id, friendly_name = find_entity_by_name(hass, device_name, device_aliases)
+        found_entity_id = None
+        friendly_name = None
+        device_name_lower = device_name.lower()
+
+        # Step 1: Check LLM controlled entities first (smart matching)
+        if llm_controlled_entities:
+            # Synonyms for cover-related terms
+            cover_synonyms = {"blind", "blinds", "shade", "shades", "cover", "covers", "curtain", "curtains"}
+
+            def normalize_for_matching(text: str) -> set[str]:
+                """Normalize text to a set of meaningful words."""
+                words = set(text.lower().split())
+                # Remove articles
+                words.discard("the")
+                words.discard("a")
+                words.discard("an")
+                words.discard("my")
+                # Normalize cover synonyms to a common term
+                normalized = set()
+                for w in words:
+                    if w in cover_synonyms:
+                        normalized.add("_cover_")  # Common placeholder
+                    else:
+                        # Handle pluralization (simple: remove trailing 's')
+                        normalized.add(w.rstrip("s") if len(w) > 3 else w)
+                return normalized
+
+            query_words = normalize_for_matching(device_name_lower)
+
+            for entity_id in llm_controlled_entities:
+                state = hass.states.get(entity_id)
+                if state:
+                    entity_friendly = state.attributes.get("friendly_name", "").lower()
+                    entity_words = normalize_for_matching(entity_friendly)
+
+                    # Check for significant overlap
+                    overlap = query_words & entity_words
+                    # Need at least one meaningful word overlap (excluding _cover_ placeholder alone)
+                    meaningful_overlap = overlap - {"_cover_"}
+
+                    # Match if:
+                    # 1. We have meaningful word overlap, OR
+                    # 2. We have cover synonym match AND share location words
+                    if meaningful_overlap or (
+                        "_cover_" in query_words and "_cover_" in entity_words and
+                        len(overlap) >= 2  # At least cover + one location word
+                    ):
+                        found_entity_id = entity_id
+                        friendly_name = state.attributes.get("friendly_name", entity_id)
+                        _LOGGER.info("LLM control match: '%s' -> %s (%s)", device_name, friendly_name, entity_id)
+                        break
+
+        # Step 2: Fall back to fuzzy matching if not found in LLM controlled
+        if not found_entity_id:
+            found_entity_id, friendly_name = find_entity_by_name(hass, device_name, device_aliases)
+
         if found_entity_id:
             entities_to_control.append((found_entity_id, friendly_name))
         else:
@@ -538,13 +595,23 @@ async def control_device(
             if domain == "cover" and action == "set_position" and position is not None:
                 service_data["position"] = max(0, min(100, position))
 
-            # Cover preset/favorite - use entity's preset_position attribute
+            # Cover preset/favorite - try button.{name}_my_position first
             if domain == "cover" and action == "preset":
-                state = hass.states.get(entity_id)
-                preset_pos = state.attributes.get("preset_position") if state else None
-                if preset_pos is None and state:
-                    preset_pos = state.attributes.get("favorite_position")
-                service_data["position"] = preset_pos if preset_pos is not None else 50
+                cover_object_id = entity_id.split(".")[1]
+                my_position_btn = f"button.{cover_object_id}_my_position"
+
+                if hass.states.get(my_position_btn):
+                    await hass.services.async_call("button", "press", {"entity_id": my_position_btn}, blocking=True)
+                    controlled.append(friendly_name)
+                    _LOGGER.info("Device control: button.press %s for %s", my_position_btn, friendly_name)
+                    continue
+                else:
+                    # Fall back to set_cover_position
+                    state = hass.states.get(entity_id)
+                    preset_pos = state.attributes.get("preset_position") if state else None
+                    if preset_pos is None and state:
+                        preset_pos = state.attributes.get("favorite_position")
+                    service_data["position"] = preset_pos if preset_pos is not None else 50
 
             await hass.services.async_call(domain, service, service_data, blocking=True)
             controlled.append(friendly_name)

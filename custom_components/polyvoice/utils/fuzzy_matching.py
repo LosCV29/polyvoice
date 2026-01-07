@@ -115,37 +115,114 @@ def _strip_stopwords(query: str) -> str:
     return " ".join(filtered) if filtered else query.lower()
 
 
-def _is_word_match(query: str, target: str) -> bool:
-    """Check if query and target share meaningful words (not just substrings).
+# Device type words - these are the ONLY words that should be fuzzy matched
+# Location words must match exactly to prevent cross-room confusion
+DEVICE_TYPE_WORDS = frozenset([
+    # Covers
+    "blind", "blinds", "shade", "shades", "curtain", "curtains", "cover", "covers",
+    "drape", "drapes", "roller", "rollers", "blackout", "sheer",
+    # Lights
+    "light", "lights", "lamp", "lamps", "bulb", "bulbs", "fixture", "fixtures",
+    "chandelier", "sconce", "spotlight", "strip",
+    # Doors/Locks
+    "door", "doors", "gate", "gates", "lock", "locks", "deadbolt", "latch",
+    # Climate
+    "thermostat", "climate", "hvac", "ac", "heater", "heating", "cooling",
+    # Fans
+    "fan", "fans", "ceiling", "exhaust",
+    # Media
+    "tv", "television", "speaker", "speakers", "media", "player", "sonos", "echo",
+    # Switches/Outlets
+    "switch", "switches", "outlet", "outlets", "plug", "plugs",
+    # Sensors
+    "sensor", "sensors", "motion", "contact", "temperature", "humidity",
+    # Other
+    "vacuum", "robot", "camera", "doorbell", "siren", "alarm",
+])
 
-    Prevents false positives like "back door" matching "ac" (air conditioning)
-    because "ac" is a substring of "back".
+# Location words - must match EXACTLY, never fuzzy
+LOCATION_WORDS = frozenset([
+    "living", "dining", "bed", "bedroom", "bath", "bathroom", "kitchen",
+    "front", "back", "side", "rear", "main", "upper", "lower", "upstairs", "downstairs",
+    "master", "guest", "kids", "kid", "baby", "nursery", "child", "children",
+    "office", "study", "den", "library", "home",
+    "garage", "carport", "driveway", "yard", "garden", "patio", "porch", "deck", "balcony",
+    "hallway", "hall", "foyer", "entry", "entryway", "mudroom", "laundry", "utility",
+    "basement", "attic", "closet", "pantry", "storage",
+    "pool", "spa", "gym", "theater", "media", "game", "play",
+    "north", "south", "east", "west", "left", "right", "center", "middle",
+    "first", "second", "third", "1st", "2nd", "3rd",
+    "room",  # Generic room word
+])
+
+
+def _extract_device_type(words: set[str]) -> set[str]:
+    """Extract device type words from a set of words."""
+    return words & DEVICE_TYPE_WORDS
+
+
+def _extract_location(words: set[str]) -> set[str]:
+    """Extract location words from a set of words."""
+    return words & LOCATION_WORDS
+
+
+def _is_word_match(query: str, target: str) -> bool:
+    """Check if query and target match with EXACT location and fuzzy device type.
+
+    STRICT MATCHING RULES:
+    1. Location words (living, kitchen, front, back, etc.) must match EXACTLY
+    2. Device type words (light, door, shade, etc.) can match via synonyms
+    3. This prevents "living room shade" from matching "dining room light"
 
     Args:
         query: User's search query
         target: Entity name/alias to check
 
     Returns:
-        True if there's a meaningful word-level match
+        True if locations match exactly AND device types are compatible
     """
     query_words = set(query.lower().split())
     target_words = set(target.lower().split())
 
-    # Check for word overlap
-    if query_words & target_words:
-        return True
+    # Remove stopwords
+    stopwords = {"the", "a", "an", "my", "in", "on", "at", "to", "for", "of", "is", "are"}
+    query_words -= stopwords
+    target_words -= stopwords
 
-    # Check if multi-word target is contained in query or vice versa
-    query_lower = query.lower()
-    target_lower = target.lower()
+    # Extract location and device type
+    query_locations = _extract_location(query_words)
+    target_locations = _extract_location(target_words)
+    query_devices = _extract_device_type(query_words)
+    target_devices = _extract_device_type(target_words)
 
-    # Require minimum length for substring matching to avoid false positives
-    # like "ac" in "back" or "at" in "thermostat"
-    min_substr_len = 4
+    # RULE 1: If query has location words, target MUST have the SAME locations
+    if query_locations:
+        if query_locations != target_locations:
+            return False
 
-    if len(target_lower) >= min_substr_len and target_lower in query_lower:
-        return True
-    if len(query_lower) >= min_substr_len and query_lower in target_lower:
+    # RULE 2: Device types must match (exact or synonym)
+    if query_devices and target_devices:
+        # Check for exact device match
+        if query_devices & target_devices:
+            return True
+        # Check for synonym match
+        for q_device in query_devices:
+            if q_device in DEVICE_SYNONYMS:
+                synonyms = set(DEVICE_SYNONYMS[q_device])
+                if synonyms & target_devices:
+                    return True
+        return False
+
+    # RULE 3: If no device types extracted, check for remaining word overlap
+    query_other = query_words - query_locations - query_devices
+    target_other = target_words - target_locations - target_devices
+
+    # Need some meaningful overlap
+    if query_other and target_other:
+        return bool(query_other & target_other)
+
+    # If query has locations that match and no device type specified, allow
+    if query_locations and query_locations == target_locations:
         return True
 
     return False
@@ -225,10 +302,18 @@ def find_entity_by_name(
     OPTIMIZED: Single-pass search with priority queue instead of 6 separate passes.
     ENHANCED: Supports cover synonyms (blind/shade/curtain/cover are interchangeable)
     """
+    # ALWAYS try the exact original query first before any variations
+    result = _find_entity_by_query(hass, query, device_aliases)
+    if result[0] is not None:
+        return result
+
     # Generate synonym variations for cover-related queries
     query_variations = normalize_cover_query(query)
 
     for query_var in query_variations:
+        # Skip the original query since we already tried it
+        if query_var.lower() == query.lower():
+            continue
         result = _find_entity_by_query(hass, query_var, device_aliases)
         if result[0] is not None:
             return result
@@ -308,24 +393,57 @@ def _find_entity_by_query(
         _LOGGER.debug("Fuzzy match: best partial (P%d) '%s' -> %s", partial_matches[0][0], partial_matches[0][2], partial_matches[0][1])
         return (partial_matches[0][1], partial_matches[0][2])
 
-    # PRIORITY 7: Generic fuzzy matching using difflib (catches typos and close matches)
-    # Only if no other matches found - this is the last resort
-    all_friendly_names = []
-    name_to_entity: dict[str, tuple[str, str]] = {}
-    for entity_id, state in all_states.items():
-        friendly_name = state.attributes.get("friendly_name", "")
-        if friendly_name:
-            fn_lower = friendly_name.lower()
-            all_friendly_names.append(fn_lower)
-            name_to_entity[fn_lower] = (entity_id, friendly_name)
+    # PRIORITY 7: Location-aware fuzzy matching (catches typos in device type only)
+    # Only match entities that have the SAME location words
+    query_words = set(query_lower.split()) - {"the", "a", "an", "my", "in", "on", "at", "to", "for", "of"}
+    query_locations = _extract_location(query_words)
+    query_devices = _extract_device_type(query_words)
 
-    # Find close matches with 60% similarity threshold
-    close_matches = difflib.get_close_matches(query_lower, all_friendly_names, n=1, cutoff=0.6)
-    if close_matches:
-        matched_name = close_matches[0]
-        entity_id, friendly_name = name_to_entity[matched_name]
-        _LOGGER.debug("Fuzzy match P7: difflib '%s' -> '%s' (%s)", query_lower, friendly_name, entity_id)
-        return (entity_id, friendly_name)
+    # Only try difflib if we have a device type to match
+    if query_devices:
+        candidates = []
+        for entity_id, state in all_states.items():
+            friendly_name = state.attributes.get("friendly_name", "")
+            if not friendly_name:
+                continue
+
+            fn_lower = friendly_name.lower()
+            fn_words = set(fn_lower.split()) - {"the", "a", "an", "my"}
+            fn_locations = _extract_location(fn_words)
+            fn_devices = _extract_device_type(fn_words)
+
+            # Location must match exactly (or both have no location)
+            if query_locations != fn_locations:
+                continue
+
+            # Must have a device type to compare
+            if not fn_devices:
+                continue
+
+            # Check if device types are compatible (exact or synonym)
+            device_match = False
+            if query_devices & fn_devices:
+                device_match = True
+            else:
+                for q_device in query_devices:
+                    if q_device in DEVICE_SYNONYMS:
+                        if set(DEVICE_SYNONYMS[q_device]) & fn_devices:
+                            device_match = True
+                            break
+
+            if device_match:
+                candidates.append((entity_id, friendly_name, fn_lower))
+
+        # If we have location-matched candidates, use difflib on those only
+        if candidates:
+            candidate_names = [c[2] for c in candidates]
+            close_matches = difflib.get_close_matches(query_lower, candidate_names, n=1, cutoff=0.6)
+            if close_matches:
+                matched_name = close_matches[0]
+                for entity_id, friendly_name, fn_lower in candidates:
+                    if fn_lower == matched_name:
+                        _LOGGER.debug("Fuzzy match P7: difflib '%s' -> '%s' (%s)", query_lower, friendly_name, entity_id)
+                        return (entity_id, friendly_name)
 
     _LOGGER.debug("Fuzzy match: no match for '%s'", query_lower)
     return (None, None)
