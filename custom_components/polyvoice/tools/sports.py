@@ -291,7 +291,11 @@ async def get_sports_info(
             response_parts.append(result["live_game"]["summary"])
         if "last_game" in result:
             lg = result["last_game"]
-            response_parts.append(f"Last game: {lg['summary']} on {lg['date']}")
+            date_str = lg['date']
+            if date_str in ("Today", "Yesterday"):
+                response_parts.append(f"Last game ({date_str.lower()}): {lg['summary']}")
+            else:
+                response_parts.append(f"Last game ({date_str}): {lg['summary']}")
         if "next_game" in result:
             ng = result["next_game"]
             response_parts.append(f"Next game: {ng['summary']}")
