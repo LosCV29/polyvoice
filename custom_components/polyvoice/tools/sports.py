@@ -292,6 +292,61 @@ async def get_sports_info(
                                 "summary": f"{away_name} {away_score} @ {home_name} {home_score}"
                             }
 
+                    # Find next upcoming game from schedule if not found on scoreboard
+                    if not next_game_from_scoreboard and query_type in ["next_game", "both"]:
+                        now_utc = datetime.now(timezone.utc)
+                        next_game = None
+                        next_game_date = None
+
+                        for event in events:
+                            status_info = event.get("competitions", [{}])[0].get("status", {}).get("type", {})
+                            is_completed = status_info.get("completed", False)
+                            state = status_info.get("state", "")
+
+                            if not is_completed and state == "pre":
+                                game_date_str = event.get("date", "")
+                                if game_date_str:
+                                    try:
+                                        game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
+                                        if game_dt > now_utc:
+                                            if next_game is None or game_dt < next_game_date:
+                                                next_game = event
+                                                next_game_date = game_dt
+                                    except (ValueError, KeyError, TypeError):
+                                        pass
+
+                        if next_game:
+                            comp = next_game.get("competitions", [{}])[0]
+                            competitors = comp.get("competitors", [])
+                            home_team = next((c for c in competitors if c.get("homeAway") == "home"), {})
+                            away_team = next((c for c in competitors if c.get("homeAway") == "away"), {})
+                            home_name = home_team.get("team", {}).get("displayName", "Home")
+                            away_name = away_team.get("team", {}).get("displayName", "Away")
+
+                            # Format the date with relative dates
+                            game_dt_local = next_game_date.astimezone(hass_timezone)
+                            now_local = datetime.now(hass_timezone)
+                            game_date_only = game_dt_local.date()
+                            today_date = now_local.date()
+                            tomorrow_date = today_date + timedelta(days=1)
+
+                            time_str = game_dt_local.strftime("%I:%M %p").lstrip("0")
+                            if game_date_only == today_date:
+                                formatted_date = f"Today at {time_str}"
+                            elif game_date_only == tomorrow_date:
+                                formatted_date = f"Tomorrow at {time_str}"
+                            else:
+                                formatted_date = game_dt_local.strftime("%A, %B %d at %I:%M %p")
+
+                            venue = comp.get("venue", {}).get("fullName", "")
+                            result["next_game"] = {
+                                "date": formatted_date,
+                                "home_team": home_name,
+                                "away_team": away_name,
+                                "venue": venue,
+                                "summary": f"{away_name} @ {home_name} - {formatted_date}"
+                            }
+
         # Build response text
         response_parts = []
         if "live_game" in result:
