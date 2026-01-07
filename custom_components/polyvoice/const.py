@@ -1,7 +1,19 @@
 """Constants for PolyVoice."""
+import json
+from pathlib import Path
 from typing import Final
 
 DOMAIN: Final = "polyvoice"
+
+
+def get_version() -> str:
+    """Get version from manifest.json - reads fresh each time."""
+    try:
+        manifest_path = Path(__file__).parent / "manifest.json"
+        with open(manifest_path) as f:
+            return json.load(f).get("version", "unknown")
+    except Exception:
+        return "unknown"
 
 # =============================================================================
 # LLM PROVIDER SETTINGS

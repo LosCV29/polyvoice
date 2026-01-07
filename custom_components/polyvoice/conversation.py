@@ -92,6 +92,7 @@ from .const import (
     PROVIDER_AZURE,
     PROVIDER_BASE_URLS,
     PROVIDER_GOOGLE,
+    get_version,
 )
 
 # Import from new modules
@@ -191,8 +192,9 @@ class LMStudioConversationEntity(ConversationEntity):
             "identifiers": {(DOMAIN, self.entry.entry_id)},
             "name": self.entry.title,
             "manufacturer": "LosCV29",
-            "model": "PolyVoice",
+            "model": "Voice Assistant",
             "entry_type": "service",
+            "sw_version": get_version(),
         }
 
     def _update_from_config(self, config: dict[str, Any]) -> None:
