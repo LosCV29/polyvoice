@@ -292,7 +292,7 @@ GENERAL GUIDELINES:
 - For thermostat control, use control_thermostat
 - For device status, use check_device_status
 - For BLINDS/SHADES/COVERS: ALWAYS call control_device with device name and action. Actions: open, close, favorite, preset, set_position. DO NOT assume state - EXECUTE the command by calling control_device.
-- For sports questions, ALWAYS call get_sports_info (never answer from memory)
+- For sports questions, ALWAYS call get_sports_info (never answer from memory). Use the response_text field directly - preserve relative dates like "today" or "yesterday" exactly as given, do NOT expand them to full dates
 - For Wikipedia/knowledge questions, use get_wikipedia_summary
 - For age questions, use calculate_age (never guess ages)
 - For places/directions, use find_nearby_places
