@@ -17,7 +17,7 @@ from openai import AsyncOpenAI, AsyncAzureOpenAI, AuthenticationError as OpenAIA
 from homeassistant.components import conversation
 from homeassistant.components.conversation import ConversationEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, MATCH_ALL
+from homeassistant.const import CONF_NAME, MATCH_ALL, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent, entity_registry as er, area_registry as ar, device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -964,9 +964,22 @@ class LMStudioConversationEntity(ConversationEntity):
         # Register usage tracking sensors
         self._update_usage_sensors()
 
-        # Register custom intent handlers to intercept excluded intents
-        # This OVERWRITES HA's built-in handlers, routing them to PolyVoice LLM instead
-        await self._register_excluded_intent_handlers()
+        # Register custom intent handlers AFTER HA is fully started
+        # This ensures we register LAST so our handlers aren't overwritten by other components
+        async def _delayed_handler_registration(_event=None) -> None:
+            """Register handlers after HA is fully started."""
+            _LOGGER.info("HA started - registering PolyVoice intent handlers (delayed)")
+            await self._register_excluded_intent_handlers()
+
+        if self.hass.is_running:
+            # HA already started, register now
+            await _delayed_handler_registration()
+        else:
+            # Wait for HA to fully start so we register AFTER all other components
+            self.hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED,
+                _delayed_handler_registration
+            )
 
         # Add cleanup callback to restore original handlers on unload
         self.entry.async_on_unload(self._restore_original_intent_handlers)
