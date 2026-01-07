@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -259,7 +259,14 @@ async def get_sports_info(
                             formatted_last_date = game_date_str[:10]  # Default fallback
                             if game_date_str:
                                 try:
-                                    game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
+                                    # Handle both full ISO timestamps and date-only strings
+                                    if "T" in game_date_str:
+                                        # Full timestamp: "2026-01-07T00:30:00Z"
+                                        game_dt = datetime.fromisoformat(game_date_str.replace("Z", "+00:00"))
+                                    else:
+                                        # Date only: "2026-01-07" - treat as UTC midnight
+                                        game_dt = datetime.fromisoformat(game_date_str).replace(tzinfo=timezone.utc)
+
                                     game_dt_local = game_dt.astimezone(hass_timezone)
                                     now_local = datetime.now(hass_timezone)
 
@@ -268,9 +275,9 @@ async def get_sports_info(
                                     yesterday_date = today_date - timedelta(days=1)
 
                                     if game_date_only == today_date:
-                                        formatted_last_date = "Today"
+                                        formatted_last_date = "today"
                                     elif game_date_only == yesterday_date:
-                                        formatted_last_date = "Yesterday"
+                                        formatted_last_date = "yesterday"
                                     else:
                                         formatted_last_date = game_dt_local.strftime("%A, %B %d")
                                 except (ValueError, KeyError, TypeError, AttributeError):
@@ -292,9 +299,21 @@ async def get_sports_info(
         if "last_game" in result:
             lg = result["last_game"]
             date_str = lg['date']
-            if date_str in ("Today", "Yesterday"):
-                response_parts.append(f"Last game ({date_str.lower()}): {lg['summary']}")
-            else:
+            # Build natural sentence for last game
+            home = lg['home_team']
+            away = lg['away_team']
+            h_score = lg['home_score']
+            a_score = lg['away_score']
+            # Determine winner
+            try:
+                if int(h_score) > int(a_score):
+                    winner, loser = home, away
+                    w_score, l_score = h_score, a_score
+                else:
+                    winner, loser = away, home
+                    w_score, l_score = a_score, h_score
+                response_parts.append(f"Last game ({date_str}): {winner} beat {loser} {w_score}-{l_score}")
+            except ValueError:
                 response_parts.append(f"Last game ({date_str}): {lg['summary']}")
         if "next_game" in result:
             ng = result["next_game"]
