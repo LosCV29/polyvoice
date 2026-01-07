@@ -426,7 +426,9 @@ def register_intent_handlers(
 
     for intent_type in intents_to_register:
         # Get original handler if it exists
-        original = intent_helpers.async_get(hass).get(intent_type)
+        # Handlers are stored in hass.data["intent"] as a dict
+        intent_handlers = hass.data.get("intent", {})
+        original = intent_handlers.get(intent_type) if isinstance(intent_handlers, dict) else None
 
         # Register our handler (it will override any existing one)
         handler = PolyVoiceIntentHandler(
