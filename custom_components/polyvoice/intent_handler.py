@@ -69,20 +69,48 @@ class PolyVoiceIntentHandler(IntentHandler):
         return self._intent_type
 
     def _get_target_entity_id(self, intent: "Intent") -> str | None:
-        """Extract the target entity ID from intent slots or matched states."""
-        # First check matched_states - HA populates this when entity is resolved
-        if hasattr(intent, 'slots') and intent.slots:
-            name_slot = intent.slots.get("name", {})
-            if isinstance(name_slot, dict):
-                value = name_slot.get("value")
-                if isinstance(value, str):
-                    # Try to find entity by name
-                    for state in self._hass.states.async_all():
-                        friendly = state.attributes.get("friendly_name", "").lower()
-                        if friendly and value.lower() in friendly:
-                            return state.entity_id
-                        if value.lower() in state.entity_id.lower():
-                            return state.entity_id
+        """Extract the target entity ID from intent slots using fuzzy matching."""
+        from .utils.fuzzy_matching import find_entity_by_name
+
+        if not hasattr(intent, 'slots') or not intent.slots:
+            return None
+
+        # Get the device name from slots
+        name_slot = intent.slots.get("name", {})
+        device_name = None
+
+        if isinstance(name_slot, dict):
+            value = name_slot.get("value")
+            if isinstance(value, dict):
+                device_name = value.get("text") or value.get("name")
+            elif isinstance(value, str):
+                device_name = value
+
+        if not device_name:
+            return None
+
+        _LOGGER.debug("Looking for Smart Device matching '%s'", device_name)
+
+        # Build aliases dict from llm_controlled_entities for fuzzy matching
+        # This allows the fuzzy matcher to prioritize our controlled entities
+        smart_device_aliases = {}
+        for entity_id in self._llm_controlled_entities:
+            state = self._hass.states.get(entity_id)
+            if state:
+                friendly = state.attributes.get("friendly_name", "").lower()
+                if friendly:
+                    smart_device_aliases[friendly] = entity_id
+
+        # Use PolyVoice's fuzzy matching (handles synonyms like blind/shade)
+        matched_id, matched_name = find_entity_by_name(
+            self._hass, device_name, smart_device_aliases
+        )
+
+        # Only return if the matched entity is in our controlled list
+        if matched_id and matched_id in self._llm_controlled_entities:
+            _LOGGER.info("Fuzzy matched '%s' to Smart Device %s", device_name, matched_id)
+            return matched_id
+
         return None
 
     def _should_intercept(self, intent: "Intent") -> bool:
