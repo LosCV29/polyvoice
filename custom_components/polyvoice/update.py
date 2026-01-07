@@ -131,13 +131,12 @@ class PolyVoiceUpdateEntity(UpdateEntity):
         """Install the update via HACS."""
         # Trigger HACS update if available
         try:
-            # Try to call HACS update service
+            # Try to call HACS download service
             await self.hass.services.async_call(
                 "hacs",
-                "repository_download",
+                "download",
                 {
                     "repository": GITHUB_REPO,
-                    "category": "integration",
                 },
                 blocking=True,
             )
