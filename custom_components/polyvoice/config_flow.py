@@ -888,49 +888,33 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     entity_aliases[eid] = []
                 entity_aliases[eid].append(alias)
 
-        # Build description showing current smart devices with their aliases
-        if llm_entities or aliases_dict:
-            lines = ["───────────────────────────────"]
-
-            # Show devices with their aliases
-            for eid in sorted(llm_entities):
-                state = self.hass.states.get(eid)
-                friendly = state.attributes.get("friendly_name", eid) if state else eid
-                aliases = entity_aliases.get(eid, [])
-                lines.append(f"📱 {friendly}")
-                lines.append(f"    Entity: {eid}")
-                if aliases:
-                    for a in aliases:
-                        lines.append(f"    🏷️ \"{a}\"")
-                else:
-                    lines.append("    (no aliases)")
-                lines.append("")
-
-            # Show orphan aliases (aliases pointing to entities not in llm_entities)
-            orphan_aliases = {k: v for k, v in aliases_dict.items() if v not in llm_entities}
-            if orphan_aliases:
-                lines.append("Aliases (standalone):")
-                for alias, eid in orphan_aliases.items():
-                    lines.append(f"  🏷️ \"{alias}\" → {eid}")
-
-            lines.append("───────────────────────────────")
-            description = "\n".join(lines)
+        # Build description - simple summary
+        device_count = len(llm_entities)
+        alias_count = len(aliases_dict)
+        if device_count or alias_count:
+            description = f"Configured: {device_count} device(s), {alias_count} alias(es)"
         else:
-            description = "No smart devices configured yet.\n\nAdd a device to enable voice aliases and smart matching."
+            description = "No smart devices configured. Add a device below."
 
-        # Build select options for existing smart devices (for add_alias and remove_device)
+        # Build select options for devices - SHOW ALIASES IN THE LABEL
         device_options = []
         for eid in sorted(llm_entities):
             state = self.hass.states.get(eid)
             friendly = state.attributes.get("friendly_name", eid) if state else eid
-            device_options.append(selector.SelectOptionDict(value=eid, label=friendly))
+            aliases = entity_aliases.get(eid, [])
+            if aliases:
+                alias_str = ", ".join(f'"{a}"' for a in aliases)
+                label = f"{friendly} → {alias_str}"
+            else:
+                label = f"{friendly} (no aliases)"
+            device_options.append(selector.SelectOptionDict(value=eid, label=label))
 
         # Build select options for existing aliases (for remove_alias)
         alias_options = []
         for alias_name, eid in sorted(aliases_dict.items()):
             state = self.hass.states.get(eid)
             friendly = state.attributes.get("friendly_name", eid) if state else eid
-            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f"\"{alias_name}\" ({friendly})"))
+            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f'"{alias_name}" → {friendly}'))
 
         # Build the schema dynamically based on what's available
         schema_dict = {
