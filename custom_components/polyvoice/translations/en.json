@@ -92,7 +92,7 @@
         "title": "LLM Fallback Aliases",
         "description": "{aliases}",
         "data": {
-          "select_alias": "Select Existing Alias",
+          "select_alias": "Edit Existing",
           "alias_entity": "Entity",
           "alias_name": "Alias Name (what you'll say)",
           "action": "Action"
@@ -102,7 +102,7 @@
         "title": "Music Room Mapping",
         "description": "{mappings}",
         "data": {
-          "select_room": "Select Existing Room",
+          "select_room": "Edit Existing",
           "room_player": "Media Player",
           "room_name": "Room Name (e.g., living room, kitchen)",
           "action": "Action"
