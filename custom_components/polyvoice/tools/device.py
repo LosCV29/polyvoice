@@ -538,48 +538,16 @@ async def control_device(
             if domain == "cover" and action == "set_position" and position is not None:
                 service_data["position"] = max(0, min(100, position))
 
-            # Cover preset/favorite - try to find a related button entity, then fall back to set_position
+            # Cover preset/favorite - try button.{name}_my_position first
             if domain == "cover" and action == "preset":
-                # Find button entities that handle preset/favorite/my position
-                button_entity = None
-                ent_reg = er.async_get(hass)
-                cover_entry = ent_reg.async_get(entity_id)
-                cover_object_id = entity_id.split(".")[1]  # e.g., "living_room_shade"
-                position_keywords = ["my_position", "favorite", "preset", "my"]
+                cover_object_id = entity_id.split(".")[1]
+                my_position_btn = f"button.{cover_object_id}_my_position"
 
-                _LOGGER.warning("PRESET: Looking for button for cover %s (object_id=%s)", entity_id, cover_object_id)
-
-                # Method 1: Search by device_id (same device)
-                if cover_entry and cover_entry.device_id:
-                    _LOGGER.warning("PRESET: Cover has device_id=%s", cover_entry.device_id)
-                    for entry in ent_reg.entities.values():
-                        if entry.entity_id.startswith("button.") and entry.device_id == cover_entry.device_id:
-                            _LOGGER.warning("PRESET: Found button on same device: %s", entry.entity_id)
-                            if any(kw in entry.entity_id.lower() for kw in position_keywords):
-                                button_entity = entry.entity_id
-                                _LOGGER.warning("PRESET: Matched button via device_id: %s", button_entity)
-                                break
-
-                # Method 2: Search by entity_id pattern (button.{cover_name}_*position*)
-                if not button_entity:
-                    _LOGGER.warning("PRESET: Trying pattern match for %s", cover_object_id)
-                    for state in hass.states.async_all():
-                        if state.entity_id.startswith("button."):
-                            if cover_object_id in state.entity_id:
-                                _LOGGER.warning("PRESET: Found button with cover name: %s", state.entity_id)
-                                if any(kw in state.entity_id.lower() for kw in position_keywords):
-                                    button_entity = state.entity_id
-                                    _LOGGER.warning("PRESET: Matched button via pattern: %s", button_entity)
-                                    break
-
-                _LOGGER.warning("PRESET: Final button_entity=%s", button_entity)
-
-                if button_entity:
-                    # Use the button instead of set_cover_position
-                    await hass.services.async_call("button", "press", {"entity_id": button_entity}, blocking=True)
+                if hass.states.get(my_position_btn):
+                    await hass.services.async_call("button", "press", {"entity_id": my_position_btn}, blocking=True)
                     controlled.append(friendly_name)
-                    _LOGGER.info("Device control: button.press on %s via %s", friendly_name, button_entity)
-                    continue  # Skip the normal service call below
+                    _LOGGER.info("Device control: button.press %s for %s", my_position_btn, friendly_name)
+                    continue
                 else:
                     # Fall back to set_cover_position
                     state = hass.states.get(entity_id)
