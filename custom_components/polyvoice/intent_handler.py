@@ -248,8 +248,11 @@ class PolyVoiceIntentHandler(IntentHandler):
         _LOGGER.info("PolyVoice processing command: '%s'", command)
 
         try:
-            # Get the conversation entity
-            entity = self._hass.data.get("conversation", {}).get("entities", {}).get(self._conversation_entity_id)
+            # Get the conversation entity via EntityComponent
+            entity_component = self._hass.data.get("conversation")
+            entity = None
+            if entity_component and hasattr(entity_component, "get_entity"):
+                entity = entity_component.get_entity(self._conversation_entity_id)
 
             if entity and hasattr(entity, "async_process_intercepted"):
                 # Use dedicated method for intercepted intents
