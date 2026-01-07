@@ -1087,11 +1087,12 @@ class LMStudioConversationEntity(ConversationEntity):
         # Store original query for tools to access (for reliable device name extraction)
         self._current_user_query = user_input.text
 
-        _LOGGER.warning("########## POLYVOICE RECEIVED: '%s' ##########", user_input.text)
-        _LOGGER.warning("########## EXCLUDED INTENTS: %s ##########", self.excluded_intents)
+        _LOGGER.error("########## POLYVOICE RECEIVED: '%s' ##########", user_input.text)
+        _LOGGER.error("########## EXCLUDED INTENTS: %s ##########", self.excluded_intents)
 
         # Try native intents first, fall back to LLM if they fail
         native_result = await self._try_native_intent(user_input, conversation_id)
+        _LOGGER.error("########## NATIVE RESULT: %s ##########", native_result)
         if native_result is not None:
             return native_result
 
@@ -1143,15 +1144,16 @@ class LMStudioConversationEntity(ConversationEntity):
         # CRITICAL: Check excluded intents BEFORE calling async_converse()
         # async_converse() EXECUTES the intent, so checking after is too late!
         # Build skip patterns from user's excluded intents list
-        _LOGGER.warning("########## CHECKING EXCLUDED INTENTS ##########")
-        _LOGGER.warning("Text: '%s'", text_lower)
-        _LOGGER.warning("Excluded intents: %s", self.excluded_intents)
+        _LOGGER.error("########## CHECKING EXCLUDED INTENTS ##########")
+        _LOGGER.error("Text: '%s'", text_lower)
+        _LOGGER.error("Excluded intents: %s", self.excluded_intents)
         for excluded_intent in self.excluded_intents:
             patterns = INTENT_PATTERNS.get(excluded_intent, [])
-            _LOGGER.warning("Intent %s patterns: %s", excluded_intent, patterns)
+            _LOGGER.error("Intent %s patterns: %s", excluded_intent, patterns)
             for pattern in patterns:
+                _LOGGER.error("Checking if '%s' in '%s': %s", pattern, text_lower, pattern in text_lower)
                 if pattern in text_lower:
-                    _LOGGER.warning("########## MATCH! '%s' found - SKIPPING NATIVE ##########", pattern)
+                    _LOGGER.error("########## MATCH! '%s' found - SKIPPING NATIVE ##########", pattern)
                     return None
 
         # Skip native intent for music commands - avoid double-play with Music Assistant
