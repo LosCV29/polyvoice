@@ -567,10 +567,16 @@ class LMStudioConversationEntity(ConversationEntity):
                             _LOGGER.error("Tool %s failed: %s", tool_call["function"]["name"], result)
                             result = {"error": str(result)}
 
+                        # If tool returned response_text, use it directly to prevent LLM reformatting
+                        if isinstance(result, dict) and "response_text" in result:
+                            content = result["response_text"]
+                        else:
+                            content = json.dumps(result)
+
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tool_call["id"],
-                            "content": json.dumps(result),
+                            "content": content,
                         })
 
                     continue
@@ -669,10 +675,15 @@ class LMStudioConversationEntity(ConversationEntity):
 
                         _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
                         result = await self._execute_tool(tc["name"], tc["arguments"], user_input)
+                        # If tool returned response_text, use it directly
+                        if isinstance(result, dict) and "response_text" in result:
+                            content = result["response_text"]
+                        else:
+                            content = json.dumps(result)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tc["id"],
-                            "content": json.dumps(result)
+                            "content": content
                         })
 
                     messages.append({"role": "user", "content": tool_results})
@@ -773,8 +784,13 @@ class LMStudioConversationEntity(ConversationEntity):
 
                         _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
                         result = await self._execute_tool(tc["name"], tc["arguments"], user_input)
+                        # If tool returned response_text, use it directly
+                        if isinstance(result, dict) and "response_text" in result:
+                            response_content = {"text": result["response_text"]}
+                        else:
+                            response_content = result
                         function_responses.append({
-                            "functionResponse": {"name": tc["name"], "response": result}
+                            "functionResponse": {"name": tc["name"], "response": response_content}
                         })
 
                     contents.append({"role": "user", "parts": function_responses})
