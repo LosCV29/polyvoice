@@ -27,7 +27,6 @@ from .const import (
     DOMAIN,
     CONF_API_KEY,
     CONF_BASE_URL,
-    CONF_BLINDS_FAVORITE_BUTTONS,
     CONF_CALENDAR_ENTITIES,
     CONF_CAMERA_ENTITIES,
     CONF_CUSTOM_LATITUDE,
@@ -275,7 +274,6 @@ class LMStudioConversationEntity(ConversationEntity):
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
-        self.blinds_favorite_buttons = parse_list_config(config.get(CONF_BLINDS_FAVORITE_BUTTONS, ""))
         self.llm_controlled_entities = set(parse_list_config(config.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)))
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
 
@@ -892,8 +890,7 @@ class LMStudioConversationEntity(ConversationEntity):
 
             elif tool_name == "control_device":
                 return await device_tool.control_device(
-                    arguments, self.hass, self.device_aliases,
-                    self.blinds_favorite_buttons
+                    arguments, self.hass, self.device_aliases
                 )
 
             elif tool_name == "control_music":

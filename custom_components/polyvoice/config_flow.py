@@ -71,7 +71,6 @@ from .const import (
     CONF_ROOM_PLAYER_MAPPING,
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
-    CONF_BLINDS_FAVORITE_BUTTONS,
     CONF_LLM_CONTROLLED_ENTITIES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
@@ -104,7 +103,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_CAMERA_ENTITIES,
-    DEFAULT_BLINDS_FAVORITE_BUTTONS,
     DEFAULT_LLM_CONTROLLED_ENTITIES,
     # Thermostat defaults
     DEFAULT_THERMOSTAT_MIN_TEMP,
@@ -652,14 +650,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     processed_input[CONF_CAMERA_ENTITIES] = cam_list
 
-            # Handle blinds favorite buttons - convert list to newline-separated string
-            if CONF_BLINDS_FAVORITE_BUTTONS in user_input:
-                buttons_list = user_input[CONF_BLINDS_FAVORITE_BUTTONS]
-                if isinstance(buttons_list, list):
-                    processed_input[CONF_BLINDS_FAVORITE_BUTTONS] = "\n".join(buttons_list)
-                else:
-                    processed_input[CONF_BLINDS_FAVORITE_BUTTONS] = buttons_list
-
             # Handle thermostat settings
             if CONF_THERMOSTAT_MIN_TEMP in user_input:
                 processed_input[CONF_THERMOSTAT_MIN_TEMP] = user_input[CONF_THERMOSTAT_MIN_TEMP]
@@ -688,13 +678,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             current_cameras = [c.strip() for c in current_cameras.split("\n") if c.strip()]
         elif not current_cameras:
             current_cameras = []
-
-        # Parse current blinds favorite buttons back to list
-        current_buttons = current.get(CONF_BLINDS_FAVORITE_BUTTONS, DEFAULT_BLINDS_FAVORITE_BUTTONS)
-        if isinstance(current_buttons, str) and current_buttons:
-            current_buttons = [b.strip() for b in current_buttons.split("\n") if b.strip()]
-        elif not current_buttons:
-            current_buttons = []
 
         # Determine if using Celsius and set appropriate defaults/ranges
         use_celsius = current.get(CONF_THERMOSTAT_USE_CELSIUS, DEFAULT_THERMOSTAT_USE_CELSIUS)
@@ -770,15 +753,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                     ): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             domain="camera",
-                            multiple=True,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_BLINDS_FAVORITE_BUTTONS,
-                        default=current_buttons,
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="button",
                             multiple=True,
                         )
                     ),

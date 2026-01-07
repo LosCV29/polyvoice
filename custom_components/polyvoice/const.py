@@ -137,7 +137,6 @@ CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
 CONF_ROOM_PLAYER_MAPPING: Final = "room_player_mapping"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
-CONF_BLINDS_FAVORITE_BUTTONS: Final = "blinds_favorite_buttons"
 CONF_LLM_CONTROLLED_ENTITIES: Final = "llm_controlled_entities"
 
 # Thermostat settings - user-configurable temperature range and step
@@ -198,7 +197,6 @@ DEFAULT_CALENDAR_ENTITIES: Final = ""
 DEFAULT_ROOM_PLAYER_MAPPING: Final = ""  # room:entity_id, one per line
 DEFAULT_DEVICE_ALIASES: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
-DEFAULT_BLINDS_FAVORITE_BUTTONS: Final = ""
 DEFAULT_LLM_CONTROLLED_ENTITIES: Final = ""  # Entities to route to LLM instead of native intents
 
 # Thermostat defaults (Fahrenheit by default)

@@ -296,7 +296,6 @@ async def control_device(
     arguments: dict[str, Any],
     hass: "HomeAssistant",
     device_aliases: dict[str, str],
-    blinds_favorite_buttons: list[str] | None = None,
 ) -> dict[str, Any]:
     """Control smart home devices.
 
@@ -315,7 +314,6 @@ async def control_device(
         arguments: Tool arguments
         hass: Home Assistant instance
         device_aliases: Custom device name -> entity_id mapping
-        blinds_favorite_buttons: List of button entity IDs for blind presets
 
     Returns:
         Control result dict
@@ -540,25 +538,8 @@ async def control_device(
             if domain == "cover" and action == "set_position" and position is not None:
                 service_data["position"] = max(0, min(100, position))
 
-            # Cover preset/favorite
+            # Cover preset/favorite - use entity's preset_position attribute
             if domain == "cover" and action == "preset":
-                cover_name = entity_id.split(".")[-1]
-                button_found = False
-
-                if blinds_favorite_buttons:
-                    for button_id in blinds_favorite_buttons:
-                        button_name = button_id.split(".")[-1] if "." in button_id else button_id
-                        if cover_name in button_name:
-                            button_state = hass.states.get(button_id)
-                            if button_state:
-                                await hass.services.async_call("button", "press", {"entity_id": button_id}, blocking=True)
-                                button_found = True
-                                controlled.append(friendly_name)
-                                break
-
-                if button_found:
-                    continue
-
                 state = hass.states.get(entity_id)
                 preset_pos = state.attributes.get("preset_position") if state else None
                 if preset_pos is None and state:
