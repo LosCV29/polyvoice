@@ -540,21 +540,31 @@ async def control_device(
 
             # Cover preset/favorite - try to find a related button entity, then fall back to set_position
             if domain == "cover" and action == "preset":
-                # Find button entities on the same device that handle preset/favorite/my position
+                # Find button entities that handle preset/favorite/my position
                 button_entity = None
                 ent_reg = er.async_get(hass)
                 cover_entry = ent_reg.async_get(entity_id)
+                cover_object_id = entity_id.split(".")[1]  # e.g., "living_room_shade"
+                position_keywords = ["my_position", "favorite", "preset"]
 
+                # Method 1: Search by device_id (same device)
                 if cover_entry and cover_entry.device_id:
-                    # Search for button entities on the same device
-                    position_keywords = ["my_position", "favorite", "preset", "my position"]
                     for entry in ent_reg.entities.values():
                         if (entry.device_id == cover_entry.device_id and
                             entry.entity_id.startswith("button.") and
-                            any(kw in entry.entity_id.lower() or
-                                (entry.original_name and kw in entry.original_name.lower())
-                                for kw in position_keywords)):
+                            any(kw in entry.entity_id.lower() for kw in position_keywords)):
                             button_entity = entry.entity_id
+                            _LOGGER.debug("Found preset button via device_id: %s", button_entity)
+                            break
+
+                # Method 2: Search by entity_id pattern (button.{cover_name}_*position*)
+                if not button_entity:
+                    for state in hass.states.async_all():
+                        if (state.entity_id.startswith("button.") and
+                            cover_object_id in state.entity_id and
+                            any(kw in state.entity_id.lower() for kw in position_keywords)):
+                            button_entity = state.entity_id
+                            _LOGGER.debug("Found preset button via pattern: %s", button_entity)
                             break
 
                 if button_entity:
