@@ -4251,50 +4251,18 @@ class LMStudioConversationEntity(ConversationEntity):
                                 playlist_name = first_playlist.get("name") or first_playlist.get("title", "Unknown Playlist")
                                 playlist_uri = first_playlist.get("uri") or first_playlist.get("media_id")
 
-                        # Default to playlist type
-                        media_type_to_use = "playlist"
-
-                        # If no playlist found, search for tracks by artist instead
-                        # (playing artist directly triggers "artist radio" which we don't want)
+                        # Shuffle only plays playlists - no fallback to avoid radio mode
                         if not playlist_uri:
-                            _LOGGER.info("No playlist found, searching for tracks by: %s", query)
-                            track_result = await self.hass.services.async_call(
-                                "music_assistant", "search",
-                                {
-                                    "config_entry_id": ma_config_entry_id,
-                                    "name": query,
-                                    "media_type": ["track"],
-                                    "limit": 50  # Get up to 50 tracks to shuffle
-                                },
-                                blocking=True,
-                                return_response=True
-                            )
-                            if track_result:
-                                tracks = []
-                                if isinstance(track_result, dict):
-                                    tracks = track_result.get("tracks", [])
-                                elif isinstance(track_result, list):
-                                    tracks = track_result
-                                if tracks:
-                                    # Get URIs for all tracks
-                                    track_uris = [t.get("uri") or t.get("media_id") for t in tracks if t.get("uri") or t.get("media_id")]
-                                    if track_uris:
-                                        playlist_name = f"{query} tracks"
-                                        playlist_uri = track_uris  # Pass list of track URIs
-                                        media_type_to_use = "track"
-                                        _LOGGER.info("Found %d tracks for: %s", len(track_uris), query)
+                            return {"error": f"Could not find a playlist matching '{query}'. Try a playlist name or genre."}
 
-                        # Fail if nothing found
-                        if not playlist_uri:
-                            return {"error": f"Could not find playlist or tracks matching '{query}'"}
-
-                        # Play with shuffle (explicitly disable radio mode)
+                        # Play the playlist with shuffle (explicitly disable radio mode)
                         player = target_players[0]
+                        _LOGGER.info("Playing playlist: %s", playlist_name)
                         await self.hass.services.async_call(
                             "music_assistant", "play_media",
                             {
                                 "media_id": playlist_uri,
-                                "media_type": media_type_to_use,
+                                "media_type": "playlist",
                                 "enqueue": "replace",
                                 "radio_mode": False
                             },
