@@ -247,6 +247,72 @@ def build_tools(config: "ToolConfig") -> list[dict]:
             ["action"]
         ))
 
+    # ===== TIMERS (always enabled) =====
+    tools.append(_tool(
+        "control_timer",
+        "Control timers. Use for: 'set a timer for 10 minutes', 'cancel the timer', 'how much time is left', 'pause timer'.",
+        {
+            "action": {
+                "type": "string",
+                "enum": ["start", "cancel", "pause", "resume", "status"],
+                "description": "'start' to create timer, 'cancel' to stop, 'pause'/'resume' to control, 'status' to check"
+            },
+            "duration": {
+                "type": "string",
+                "description": "Duration for new timer (e.g., '10 minutes', '1 hour 30 minutes', '90 seconds')"
+            },
+            "name": {
+                "type": "string",
+                "description": "Optional timer name (e.g., 'pizza', 'laundry')"
+            }
+        },
+        ["action"]
+    ))
+
+    # ===== LISTS (always enabled) =====
+    tools.append(_tool(
+        "manage_list",
+        "Manage shopping lists and to-do lists. Use for: 'add milk to shopping list', 'what's on my list', 'complete eggs', 'clear the list'.",
+        {
+            "action": {
+                "type": "string",
+                "enum": ["add", "complete", "remove", "show", "clear", "list_all"],
+                "description": "'add' item, 'complete' (check off), 'remove' (delete), 'show' items, 'clear' all, 'list_all' available lists"
+            },
+            "item": {
+                "type": "string",
+                "description": "Item to add/complete/remove"
+            },
+            "list_name": {
+                "type": "string",
+                "description": "Optional list name (defaults to shopping list)"
+            }
+        },
+        ["action"]
+    ))
+
+    # ===== REMINDERS (always enabled) =====
+    tools.append(_tool(
+        "create_reminder",
+        "Create reminders. Use for: 'remind me to call mom at 5pm', 'set a reminder for tomorrow'.",
+        {
+            "reminder": {
+                "type": "string",
+                "description": "What to remind about"
+            },
+            "time": {
+                "type": "string",
+                "description": "When to remind (e.g., 'in 30 minutes', 'at 5pm', 'tomorrow at noon')"
+            }
+        },
+        ["reminder"]
+    ))
+
+    tools.append(_tool(
+        "get_reminders",
+        "Get upcoming reminders. Use for: 'what reminders do I have', 'show my reminders'.",
+    ))
+
     # ===== DEVICE CONTROL (always enabled - LLM fallback) =====
     tools.append(_tool(
         "control_device",

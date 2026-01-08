@@ -115,6 +115,9 @@ from .tools import camera as camera_tool
 from .tools import thermostat as thermostat_tool
 from .tools import device as device_tool
 from .tools.music import MusicController
+from .tools import timer as timer_tool
+from .tools import lists as lists_tool
+from .tools import reminders as reminders_tool
 
 from .intent_handler import register_intent_handlers, restore_intent_handlers
 
@@ -928,6 +931,18 @@ class LMStudioConversationEntity(ConversationEntity):
                 if self._music_controller:
                     return await self._music_controller.control_music(arguments)
                 return {"error": "Music control not configured"}
+
+            elif tool_name == "control_timer":
+                return await timer_tool.control_timer(arguments, self.hass)
+
+            elif tool_name == "manage_list":
+                return await lists_tool.manage_list(arguments, self.hass)
+
+            elif tool_name == "create_reminder":
+                return await reminders_tool.create_reminder(arguments, self.hass, hass_tz)
+
+            elif tool_name == "get_reminders":
+                return await reminders_tool.get_reminders(arguments, self.hass, hass_tz)
 
             # Fall back to script execution
             elif self.hass.services.has_service("script", tool_name):
