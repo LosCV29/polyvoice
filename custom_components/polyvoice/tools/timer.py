@@ -7,6 +7,7 @@ Supports:
 - Add time to existing timers: "add 5 minutes"
 - Restart timers with same duration
 - Fuzzy name matching
+- TTS announcements when timers finish
 """
 from __future__ import annotations
 
@@ -19,6 +20,102 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _LOGGER = logging.getLogger(__name__)
+
+# Storage key for tracking PolyVoice-started timers
+POLYVOICE_TIMERS_KEY = "polyvoice_active_timers"
+
+
+def register_timer(
+    hass: "HomeAssistant",
+    entity_id: str,
+    friendly_name: str,
+    announce_player: str | None = None
+) -> None:
+    """Register a timer started by PolyVoice for finish notifications.
+
+    Args:
+        hass: Home Assistant instance
+        entity_id: Timer entity ID
+        friendly_name: Human-readable timer name
+        announce_player: Media player to announce on when timer finishes
+    """
+    if POLYVOICE_TIMERS_KEY not in hass.data:
+        hass.data[POLYVOICE_TIMERS_KEY] = {}
+    hass.data[POLYVOICE_TIMERS_KEY][entity_id] = {
+        "name": friendly_name,
+        "announce_player": announce_player,
+    }
+    _LOGGER.debug("Registered PolyVoice timer: %s (%s) -> announce on %s",
+                  entity_id, friendly_name, announce_player or "default")
+
+
+def unregister_timer(hass: "HomeAssistant", entity_id: str) -> dict | None:
+    """Unregister a timer and return its info if it was ours."""
+    if POLYVOICE_TIMERS_KEY in hass.data:
+        return hass.data[POLYVOICE_TIMERS_KEY].pop(entity_id, None)
+    return None
+
+
+def get_registered_timer(hass: "HomeAssistant", entity_id: str) -> dict | None:
+    """Get the info of a registered timer.
+
+    Returns:
+        Dict with 'name' and 'announce_player' keys, or None
+    """
+    if POLYVOICE_TIMERS_KEY in hass.data:
+        return hass.data[POLYVOICE_TIMERS_KEY].get(entity_id)
+    return None
+
+
+def get_player_for_device(
+    hass: "HomeAssistant",
+    device_id: str | None,
+    room_player_mapping: dict[str, str] | None
+) -> str | None:
+    """Determine which media player to use for announcements.
+
+    Logic:
+    1. Try to find a media player linked to the device_id (voice satellite)
+    2. Fall back to first player in room_player_mapping
+    3. Return None if nothing configured
+    """
+    if not device_id and not room_player_mapping:
+        return None
+
+    # Try to find media player associated with this device
+    if device_id:
+        try:
+            from homeassistant.helpers import device_registry as dr
+            dev_reg = dr.async_get(hass)
+            device = dev_reg.async_get(device_id)
+
+            if device:
+                # Check if this device has a linked media player
+                # ESPHome satellites often have the same name as a media player
+                device_name = (device.name or "").lower()
+
+                # Search for matching media player in room mapping
+                if room_player_mapping:
+                    for room, player in room_player_mapping.items():
+                        if device_name in room.lower() or room.lower() in device_name:
+                            return player
+
+                # Search all media players for a match
+                all_states = hass.states.async_all()
+                for state in all_states:
+                    if state.entity_id.startswith("media_player."):
+                        friendly = state.attributes.get("friendly_name", "").lower()
+                        entity_name = state.entity_id.replace("media_player.", "").lower()
+                        if device_name in friendly or device_name in entity_name:
+                            return state.entity_id
+        except Exception as err:
+            _LOGGER.debug("Could not resolve device_id %s: %s", device_id, err)
+
+    # Fall back to first configured player
+    if room_player_mapping:
+        return next(iter(room_player_mapping.values()), None)
+
+    return None
 
 # Word to number mapping for natural language
 WORD_TO_NUM = {
@@ -271,12 +368,16 @@ def _find_timer_by_name(timers: list, name: str) -> Any | None:
 async def control_timer(
     arguments: dict[str, Any],
     hass: "HomeAssistant",
+    device_id: str | None = None,
+    room_player_mapping: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Control timers in Home Assistant.
 
     Args:
         arguments: Tool arguments (action, duration, name, add_time)
         hass: Home Assistant instance
+        device_id: Device that initiated the command (for announcement targeting)
+        room_player_mapping: Room to media player mapping
 
     Returns:
         Timer operation result
@@ -285,6 +386,9 @@ async def control_timer(
     duration = arguments.get("duration", "")
     timer_name = arguments.get("name", "")
     add_time = arguments.get("add_time", "")  # For extending timers
+
+    # Determine which player to announce on
+    announce_player = get_player_for_device(hass, device_id, room_player_mapping)
 
     # Normalize action aliases
     action_aliases = {
@@ -357,6 +461,10 @@ async def control_timer(
             )
 
             friendly = hass.states.get(timer_entity).attributes.get("friendly_name", "Timer")
+
+            # Register for finish notification with target speaker
+            register_timer(hass, timer_entity, friendly, announce_player)
+
             return {
                 "success": True,
                 "action": "started",
@@ -376,6 +484,7 @@ async def control_timer(
                         {"entity_id": matched.entity_id},
                         blocking=True
                     )
+                    unregister_timer(hass, matched.entity_id)
                     friendly = matched.attributes.get("friendly_name", "Timer")
                     return {
                         "success": True,
@@ -396,6 +505,7 @@ async def control_timer(
                         {"entity_id": timer.entity_id},
                         blocking=True
                     )
+                    unregister_timer(hass, timer.entity_id)
 
                 return {
                     "success": True,

@@ -933,7 +933,11 @@ class LMStudioConversationEntity(ConversationEntity):
                 return {"error": "Music control not configured"}
 
             elif tool_name == "control_timer":
-                return await timer_tool.control_timer(arguments, self.hass)
+                return await timer_tool.control_timer(
+                    arguments, self.hass,
+                    device_id=user_input.device_id,
+                    room_player_mapping=self.room_player_mapping
+                )
 
             elif tool_name == "manage_list":
                 return await lists_tool.manage_list(arguments, self.hass)
