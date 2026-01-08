@@ -129,8 +129,8 @@ class MusicController:
                 return rname
         return "unknown"
 
-    async def _search_media(self, query: str, media_type: str) -> tuple[str, str, str] | None:
-        """Search for media and return (media_id, name, resolved_type) or None."""
+    async def _search_playlist(self, query: str) -> tuple[str, str] | None:
+        """Search for playlist ONLY and return (media_id, exact_name) or None."""
         try:
             ma_entries = self._hass.config_entries.async_entries("music_assistant")
             if not ma_entries:
@@ -138,43 +138,29 @@ class MusicController:
                 return None
             ma_config_entry_id = ma_entries[0].entry_id
 
-            # Search based on media type
-            search_types = {
-                "artist": ["artist"],
-                "genre": ["playlist", "artist"],  # Search playlist first for genre
-                "playlist": ["playlist"],
-                "album": ["album"],
-                "track": ["track"],
-            }
-            types_to_search = search_types.get(media_type, ["artist", "playlist"])
+            # ONLY search for playlists
+            search_result = await self._hass.services.async_call(
+                "music_assistant", "search",
+                {"config_entry_id": ma_config_entry_id, "name": query, "media_type": ["playlist"], "limit": 1},
+                blocking=True, return_response=True
+            )
 
-            for search_type in types_to_search:
-                search_result = await self._hass.services.async_call(
-                    "music_assistant", "search",
-                    {"config_entry_id": ma_config_entry_id, "name": query, "media_type": [search_type], "limit": 1},
-                    blocking=True, return_response=True
-                )
+            if search_result:
+                items = []
+                if isinstance(search_result, dict):
+                    items = search_result.get("playlists", []) or search_result.get("items", [])
+                elif isinstance(search_result, list):
+                    items = search_result
 
-                if search_result:
-                    items = []
-                    if isinstance(search_result, dict):
-                        # Try various result keys
-                        for key in [f"{search_type}s", "items", search_type]:
-                            if key in search_result and search_result[key]:
-                                items = search_result[key]
-                                break
-                    elif isinstance(search_result, list):
-                        items = search_result
+                if items:
+                    item = items[0]
+                    name = item.get("name") or item.get("title", query)
+                    media_id = item.get("uri") or item.get("media_id")
+                    if media_id:
+                        _LOGGER.info("Found playlist: %s (%s)", name, media_id)
+                        return (media_id, name)
 
-                    if items:
-                        item = items[0]
-                        name = item.get("name") or item.get("title", query)
-                        media_id = item.get("uri") or item.get("media_id")
-                        if media_id:
-                            _LOGGER.info("Found %s: %s (%s)", search_type, name, media_id)
-                            return (media_id, name, search_type)
-
-            _LOGGER.warning("No results found for '%s' (type: %s)", query, media_type)
+            _LOGGER.warning("No playlist found for '%s'", query)
             return None
 
         except Exception as err:
@@ -182,41 +168,42 @@ class MusicController:
             return None
 
     async def _play(self, query: str, media_type: str, room: str, shuffle: bool, target_players: list[str]) -> dict:
-        """Play music - searches and plays top result with shuffle."""
+        """Play music - ALWAYS searches playlist, ALWAYS shuffles, returns exact name."""
         if not query:
             return {"error": "No music query specified"}
         if not target_players:
             return {"error": f"Unknown room: {room}. Available: {', '.join(self._players.keys())}"}
 
-        # Search for the best match
-        search_result = await self._search_media(query, media_type)
+        # ALWAYS search for playlist only
+        search_result = await self._search_playlist(query)
         if not search_result:
-            return {"error": f"Could not find {media_type} matching '{query}'"}
+            return {"error": f"Could not find a playlist matching '{query}'", "response_text": f"I couldn't find a playlist for {query}."}
 
-        media_id, media_name, resolved_type = search_result
+        media_id, playlist_name = search_result
 
-        # Play on all target players in parallel
-        for player in target_players:
-            # Fire play + shuffle in parallel (always shuffle for artist/genre)
-            tasks = [
-                self._hass.services.async_call(
-                    "music_assistant", "play_media",
-                    {"media_id": media_id, "media_type": resolved_type, "enqueue": "replace", "radio_mode": False},
-                    target={"entity_id": player},
-                    blocking=False
-                )
-            ]
-            if shuffle or media_type in ("genre", "artist"):
-                tasks.append(
-                    self._hass.services.async_call(
-                        "media_player", "shuffle_set",
-                        {"entity_id": player, "shuffle": True},
-                        blocking=False
-                    )
-                )
-            await asyncio.gather(*tasks)
+        # Play on target player with shuffle - fire both in parallel
+        player = target_players[0]
+        await asyncio.gather(
+            self._hass.services.async_call(
+                "music_assistant", "play_media",
+                {"media_id": media_id, "media_type": "playlist", "enqueue": "replace", "radio_mode": False},
+                target={"entity_id": player},
+                blocking=False
+            ),
+            self._hass.services.async_call(
+                "media_player", "shuffle_set",
+                {"entity_id": player, "shuffle": True},
+                blocking=False
+            )
+        )
 
-        return {"status": "playing", "message": f"Playing {media_name} in the {room}"}
+        # Return exact playlist name in response
+        return {
+            "status": "playing",
+            "playlist": playlist_name,
+            "room": room,
+            "response_text": f"Shuffling {playlist_name} in the {room}."
+        }
 
     async def _pause(self, all_players: list[str]) -> dict:
         """Pause music."""
