@@ -195,12 +195,12 @@ class MusicController:
                     blocking=True
                 )
 
-        # Natural response for LLM - say the name!
+        # Natural response - include name and room
         shuffled = shuffle or media_type == "genre"
         if shuffled:
-            speech = f"Playing {query} on shuffle"
+            speech = f"Now shuffling {query} in the {room}"
         else:
-            speech = f"Playing {query}"
+            speech = f"Now playing {query} in the {room}"
 
         return {
             "status": "ok",
@@ -446,13 +446,13 @@ class MusicController:
                 blocking=True
             )
 
-            # Natural response for LLM - say the name!
+            # Natural response - include playlist name and room
             return {
                 "status": "ok",
                 "name": matched_name,
                 "type": media_type_to_use,
                 "room": room,
-                "speech": f"Playing {matched_name} on shuffle"
+                "speech": f"Now shuffling {matched_name} in the {room}"
             }
 
         except Exception as search_err:
