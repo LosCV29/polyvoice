@@ -16,7 +16,12 @@ class MusicController:
 
     This class manages music state (last paused player, debouncing)
     and handles all music control operations via Music Assistant.
+
+    Uses blueprint pattern for O(1) action dispatch and single-pass state caching.
     """
+
+    # Valid media types for validation
+    VALID_MEDIA_TYPES = frozenset({"track", "album", "artist", "playlist", "genre"})
 
     def __init__(self, hass: "HomeAssistant", room_player_mapping: dict[str, str]):
         """Initialize the music controller.
@@ -31,6 +36,20 @@ class MusicController:
         self._last_music_command: str | None = None
         self._last_music_command_time: datetime | None = None
         self._music_debounce_seconds = 3.0
+
+        # Blueprint: O(1) action dispatch dictionary
+        self._action_handlers: dict[str, callable] = {
+            "play": self._handle_play,
+            "pause": self._handle_pause,
+            "resume": self._handle_resume,
+            "stop": self._handle_stop,
+            "skip_next": self._handle_skip_next,
+            "skip_previous": self._handle_skip_previous,
+            "restart_track": self._handle_restart_track,
+            "what_playing": self._handle_what_playing,
+            "transfer": self._handle_transfer,
+            "shuffle": self._handle_shuffle,
+        }
 
     async def control_music(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Control music playback.
@@ -55,6 +74,11 @@ class MusicController:
             _LOGGER.error("No players configured! room_player_mapping is empty")
             return {"error": "No music players configured. Go to PolyVoice → Entity Configuration → Room to Player Mapping."}
 
+        # Validate media_type
+        if media_type and media_type not in self.VALID_MEDIA_TYPES:
+            _LOGGER.warning("Invalid media_type '%s', defaulting to 'artist'", media_type)
+            media_type = "artist"
+
         # Debounce check
         now = datetime.now()
         debounce_actions = {"skip_next", "skip_previous", "restart_track", "pause", "resume", "stop"}
@@ -74,32 +98,53 @@ class MusicController:
             # Determine target player(s)
             target_players = self._find_target_players(room)
 
-            if action == "play":
-                return await self._play(query, media_type, room, shuffle, target_players)
-            elif action == "pause":
-                return await self._pause(all_players)
-            elif action == "resume":
-                return await self._resume(all_players)
-            elif action == "stop":
-                return await self._stop(all_players)
-            elif action == "skip_next":
-                return await self._skip_next(all_players)
-            elif action == "skip_previous":
-                return await self._skip_previous(all_players)
-            elif action == "restart_track":
-                return await self._restart_track(all_players)
-            elif action == "what_playing":
-                return await self._what_playing(all_players)
-            elif action == "transfer":
-                return await self._transfer(all_players, target_players, room)
-            elif action == "shuffle":
-                return await self._shuffle(query, room, target_players)
-            else:
+            # Blueprint: Single-pass state caching - gather all states once
+            player_states = self._cache_player_states(all_players)
+
+            # Blueprint: O(1) action dispatch
+            handler = self._action_handlers.get(action)
+            if handler is None:
                 return {"error": f"Unknown action: {action}"}
+
+            # Build context for handlers
+            ctx = {
+                "query": query,
+                "media_type": media_type,
+                "room": room,
+                "shuffle": shuffle,
+                "all_players": all_players,
+                "target_players": target_players,
+                "player_states": player_states,
+            }
+
+            return await handler(ctx)
 
         except Exception as err:
             _LOGGER.error("Music control error: %s", err, exc_info=True)
             return {"error": f"Music control failed: {str(err)}"}
+
+    def _cache_player_states(self, all_players: list[str]) -> dict[str, dict]:
+        """Cache all player states in a single pass.
+
+        Returns dict: {entity_id: {"state": str, "attributes": dict}}
+        """
+        states = {}
+        for pid in all_players:
+            state_obj = self._hass.states.get(pid)
+            if state_obj:
+                states[pid] = {
+                    "state": state_obj.state,
+                    "attributes": dict(state_obj.attributes),
+                }
+                _LOGGER.debug("  %s → %s", pid, state_obj.state)
+        return states
+
+    def _find_player_by_state_cached(self, target_state: str, player_states: dict[str, dict]) -> str | None:
+        """Find a player in a specific state using cached states."""
+        for pid, data in player_states.items():
+            if data["state"] == target_state:
+                return pid
+        return None
 
     def _find_target_players(self, room: str) -> list[str]:
         """Find target players for a room."""
@@ -111,16 +156,6 @@ class MusicController:
                     return [pid]
         return []
 
-    def _find_player_by_state(self, target_state: str, all_players: list[str]) -> str | None:
-        """Find a player in a specific state."""
-        for pid in all_players:
-            state = self._hass.states.get(pid)
-            if state:
-                _LOGGER.info("  %s → %s", pid, state.state)
-                if state.state == target_state:
-                    return pid
-        return None
-
     def _get_room_name(self, entity_id: str) -> str:
         """Get room name from entity_id."""
         for rname, pid in self._players.items():
@@ -128,8 +163,18 @@ class MusicController:
                 return rname
         return "unknown"
 
-    async def _play(self, query: str, media_type: str, room: str, shuffle: bool, target_players: list[str]) -> dict:
+    # ========== Blueprint Action Handlers ==========
+    # All handlers receive ctx dict with: query, media_type, room, shuffle,
+    # all_players, target_players, player_states
+
+    async def _handle_play(self, ctx: dict) -> dict:
         """Play music."""
+        query = ctx["query"]
+        media_type = ctx["media_type"]
+        room = ctx["room"]
+        shuffle = ctx["shuffle"]
+        target_players = ctx["target_players"]
+
         if not query:
             return {"error": "No music query specified"}
         if not target_players:
@@ -151,10 +196,12 @@ class MusicController:
 
         return {"status": "playing", "message": f"Playing {query} in the {room}"}
 
-    async def _pause(self, all_players: list[str]) -> dict:
+    async def _handle_pause(self, ctx: dict) -> dict:
         """Pause music."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
             await self._hass.services.async_call("media_player", "media_pause", {"entity_id": playing})
             self._last_paused_player = playing
@@ -162,8 +209,11 @@ class MusicController:
             return {"status": "paused", "message": f"Paused in {self._get_room_name(playing)}"}
         return {"error": "No music is currently playing"}
 
-    async def _resume(self, all_players: list[str]) -> dict:
+    async def _handle_resume(self, ctx: dict) -> dict:
         """Resume music."""
+        all_players = ctx["all_players"]
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player to resume...")
 
         if self._last_paused_player and self._last_paused_player in all_players:
@@ -173,60 +223,70 @@ class MusicController:
             self._last_paused_player = None
             return {"status": "resumed", "message": f"Resumed in {room_name}"}
 
-        paused = self._find_player_by_state("paused", all_players)
+        paused = self._find_player_by_state_cached("paused", player_states)
         if paused:
             await self._hass.services.async_call("media_player", "media_play", {"entity_id": paused})
             return {"status": "resumed", "message": f"Resumed in {self._get_room_name(paused)}"}
 
         return {"error": "No paused music to resume"}
 
-    async def _stop(self, all_players: list[str]) -> dict:
+    async def _handle_stop(self, ctx: dict) -> dict:
         """Stop music."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' or 'paused' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
             await self._hass.services.async_call("media_player", "media_stop", {"entity_id": playing})
             return {"status": "stopped", "message": f"Stopped in {self._get_room_name(playing)}"}
-        paused = self._find_player_by_state("paused", all_players)
+        paused = self._find_player_by_state_cached("paused", player_states)
         if paused:
             await self._hass.services.async_call("media_player", "media_stop", {"entity_id": paused})
             return {"status": "stopped", "message": f"Stopped in {self._get_room_name(paused)}"}
         return {"message": "No music is playing"}
 
-    async def _skip_next(self, all_players: list[str]) -> dict:
+    async def _handle_skip_next(self, ctx: dict) -> dict:
         """Skip to next track."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
             await self._hass.services.async_call("media_player", "media_next_track", {"entity_id": playing})
             return {"status": "skipped", "message": "Skipped to next track"}
         return {"error": "No music is playing to skip"}
 
-    async def _skip_previous(self, all_players: list[str]) -> dict:
+    async def _handle_skip_previous(self, ctx: dict) -> dict:
         """Skip to previous track."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
             await self._hass.services.async_call("media_player", "media_previous_track", {"entity_id": playing})
             return {"status": "skipped", "message": "Previous track"}
         return {"error": "No music is playing"}
 
-    async def _restart_track(self, all_players: list[str]) -> dict:
+    async def _handle_restart_track(self, ctx: dict) -> dict:
         """Restart current track from beginning."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state to restart track...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
             await self._hass.services.async_call("media_player", "media_seek", {"entity_id": playing, "seek_position": 0})
             return {"status": "restarted", "message": "Bringing it back from the top"}
         return {"error": "No music is playing"}
 
-    async def _what_playing(self, all_players: list[str]) -> dict:
-        """Get currently playing track info."""
+    async def _handle_what_playing(self, ctx: dict) -> dict:
+        """Get currently playing track info using cached states."""
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if playing:
-            state = self._hass.states.get(playing)
-            attrs = state.attributes
+            # Use cached attributes instead of re-fetching
+            attrs = player_states[playing]["attributes"]
             return {
                 "title": attrs.get("media_title", "Unknown"),
                 "artist": attrs.get("media_artist", "Unknown"),
@@ -235,10 +295,14 @@ class MusicController:
             }
         return {"message": "No music currently playing"}
 
-    async def _transfer(self, all_players: list[str], target_players: list[str], room: str) -> dict:
+    async def _handle_transfer(self, ctx: dict) -> dict:
         """Transfer music to another room."""
+        room = ctx["room"]
+        target_players = ctx["target_players"]
+        player_states = ctx["player_states"]
+
         _LOGGER.info("Looking for player in 'playing' state...")
-        playing = self._find_player_by_state("playing", all_players)
+        playing = self._find_player_by_state_cached("playing", player_states)
         if not playing:
             return {"error": "No music playing to transfer"}
         if not target_players:
@@ -255,8 +319,12 @@ class MusicController:
         )
         return {"status": "transferred", "message": f"Music transferred to {self._get_room_name(target)}"}
 
-    async def _shuffle(self, query: str, room: str, target_players: list[str]) -> dict:
+    async def _handle_shuffle(self, ctx: dict) -> dict:
         """Search and play shuffled playlist."""
+        query = ctx["query"]
+        room = ctx["room"]
+        target_players = ctx["target_players"]
+
         if not query:
             return {"error": "No search query specified for shuffle"}
         if not target_players:
