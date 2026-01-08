@@ -182,12 +182,63 @@ async def manage_list(
                     "message": f"{list_friendly} is empty"
                 }
 
-            item_names = [i.get("summary", "") for i in items]
+            # Sort items alphabetically for display
+            item_names = sorted([i.get("summary", "") for i in items], key=str.lower)
             return {
                 "list": list_friendly,
                 "count": len(items),
                 "items": item_names,
                 "message": f"{list_friendly} has {len(items)} item{'s' if len(items) != 1 else ''}: {', '.join(item_names)}"
+            }
+
+        elif action == "sort" or action == "alphabetize":
+            # Get all incomplete items
+            result = await hass.services.async_call(
+                "todo", "get_items",
+                {"entity_id": target_list, "status": "needs_action"},
+                blocking=True,
+                return_response=True
+            )
+
+            items = []
+            if result and target_list in result:
+                items = result[target_list].get("items", [])
+
+            if len(items) < 2:
+                return {"message": "List has fewer than 2 items, nothing to sort"}
+
+            # Get item names and sort alphabetically
+            item_names = [i.get("summary", "") for i in items]
+            sorted_names = sorted(item_names, key=str.lower)
+
+            # Check if already sorted
+            if item_names == sorted_names:
+                return {"message": "List is already sorted alphabetically"}
+
+            # Remove all items
+            for name in item_names:
+                await hass.services.async_call(
+                    "todo", "remove_item",
+                    {"entity_id": target_list, "item": name},
+                    blocking=True
+                )
+
+            # Re-add in sorted order
+            for name in sorted_names:
+                await hass.services.async_call(
+                    "todo", "add_item",
+                    {"entity_id": target_list, "item": name},
+                    blocking=True
+                )
+
+            list_friendly = hass.states.get(target_list).attributes.get("friendly_name", "list")
+            return {
+                "success": True,
+                "action": "sorted",
+                "count": len(sorted_names),
+                "items": sorted_names,
+                "list": list_friendly,
+                "message": f"Sorted {len(sorted_names)} items alphabetically on {list_friendly}"
             }
 
         elif action == "clear":
