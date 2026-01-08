@@ -147,6 +147,7 @@ LOCATION_WORDS = frozenset([
     "master", "guest", "kids", "kid", "baby", "nursery", "child", "children",
     "office", "study", "den", "library", "home",
     "garage", "carport", "driveway", "yard", "garden", "patio", "porch", "deck", "balcony",
+    "backyard", "frontyard", "sideyard",  # Compound yard words
     "hallway", "hall", "foyer", "entry", "entryway", "mudroom", "laundry", "utility",
     "basement", "attic", "closet", "pantry", "storage",
     "pool", "spa", "gym", "theater", "media", "game", "play",
