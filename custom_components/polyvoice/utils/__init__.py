@@ -3,8 +3,6 @@ from .fuzzy_matching import (
     normalize_cover_query,
     find_entity_by_name,
     STOPWORDS,
-    ROOM_ABBREVIATIONS,
-    COVER_SYNONYMS,
     DEVICE_SYNONYMS,
 )
 from .parsing import (
@@ -23,8 +21,6 @@ __all__ = [
     "normalize_cover_query",
     "find_entity_by_name",
     "STOPWORDS",
-    "ROOM_ABBREVIATIONS",
-    "COVER_SYNONYMS",
     "DEVICE_SYNONYMS",
     # Parsing
     "parse_entity_config",
