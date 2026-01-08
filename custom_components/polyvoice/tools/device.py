@@ -1,6 +1,7 @@
 """Device control, status, and history tool handlers."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
@@ -481,10 +482,10 @@ async def control_device(
     else:
         return {"error": "No device specified. Provide entity_id, entity_ids, area, or device name."}
 
-    # Execute control
-    controlled = []
+    # Build service calls first, then execute in parallel
+    service_calls: list[tuple[str, str, dict, str]] = []  # (domain, service, data, friendly_name)
     failed = []
-    service = None
+    last_service = None
 
     for entity_id, friendly_name in entities_to_control:
         domain = entity_id.split(".")[0]
@@ -495,75 +496,88 @@ async def control_device(
             failed.append(f"{friendly_name} (unsupported action)")
             continue
 
+        service_data = {"entity_id": entity_id}
+
+        # Light controls
+        if domain == "light" and action == "turn_on":
+            if brightness is not None:
+                service_data["brightness_pct"] = max(0, min(100, brightness))
+            if color and color in color_map and color_map[color]:
+                service_data["rgb_color"] = color_map[color]
+            elif color == "warm":
+                service_data["color_temp_kelvin"] = 2700
+            elif color == "cool":
+                service_data["color_temp_kelvin"] = 6500
+            if color_temp is not None:
+                service_data["color_temp_kelvin"] = max(2000, min(6500, color_temp))
+
+        # Media player controls
+        if domain == "media_player":
+            if action == "set_volume" and volume is not None:
+                service_data["volume_level"] = max(0, min(100, volume)) / 100.0
+            if action == "mute":
+                service_data["is_volume_muted"] = True
+            if action == "unmute":
+                service_data["is_volume_muted"] = False
+
+        # Climate controls
+        if domain == "climate":
+            if action == "set_temperature" and temperature is not None:
+                service_data["temperature"] = temperature
+            if hvac_mode:
+                if action == "set_hvac_mode" or (action == "turn_on" and hvac_mode):
+                    service = "set_hvac_mode"
+                    service_data["hvac_mode"] = hvac_mode
+
+        # Fan controls
+        if domain == "fan" and fan_speed:
+            speed_map = {"low": 33, "medium": 66, "high": 100, "auto": 50}
+            if fan_speed in speed_map:
+                service_data["percentage"] = speed_map[fan_speed]
+
+        # Cover position
+        if domain == "cover" and action == "set_position" and position is not None:
+            service_data["position"] = max(0, min(100, position))
+
+        # Cover preset/favorite - try button.{name}_my_position first
+        if domain == "cover" and action == "preset":
+            cover_object_id = entity_id.split(".")[1]
+            my_position_btn = f"button.{cover_object_id}_my_position"
+
+            if hass.states.get(my_position_btn):
+                service_calls.append(("button", "press", {"entity_id": my_position_btn}, friendly_name))
+                last_service = service
+                continue
+            else:
+                # Fall back to set_cover_position
+                state = hass.states.get(entity_id)
+                preset_pos = state.attributes.get("preset_position") if state else None
+                if preset_pos is None and state:
+                    preset_pos = state.attributes.get("favorite_position")
+                service_data["position"] = preset_pos if preset_pos is not None else 50
+
+        service_calls.append((domain, service, service_data, friendly_name))
+        last_service = service
+
+    # Execute all service calls in parallel
+    async def execute_call(call_info: tuple[str, str, dict, str]) -> tuple[str, Exception | None]:
+        domain, service, data, name = call_info
         try:
-            service_data = {"entity_id": entity_id}
-
-            # Light controls
-            if domain == "light" and action == "turn_on":
-                if brightness is not None:
-                    service_data["brightness_pct"] = max(0, min(100, brightness))
-                if color and color in color_map and color_map[color]:
-                    service_data["rgb_color"] = color_map[color]
-                elif color == "warm":
-                    service_data["color_temp_kelvin"] = 2700
-                elif color == "cool":
-                    service_data["color_temp_kelvin"] = 6500
-                if color_temp is not None:
-                    service_data["color_temp_kelvin"] = max(2000, min(6500, color_temp))
-
-            # Media player controls
-            if domain == "media_player":
-                if action == "set_volume" and volume is not None:
-                    service_data["volume_level"] = max(0, min(100, volume)) / 100.0
-                if action == "mute":
-                    service_data["is_volume_muted"] = True
-                if action == "unmute":
-                    service_data["is_volume_muted"] = False
-
-            # Climate controls
-            if domain == "climate":
-                if action == "set_temperature" and temperature is not None:
-                    service_data["temperature"] = temperature
-                if hvac_mode:
-                    if action == "set_hvac_mode" or (action == "turn_on" and hvac_mode):
-                        service = "set_hvac_mode"
-                        service_data["hvac_mode"] = hvac_mode
-
-            # Fan controls
-            if domain == "fan" and fan_speed:
-                speed_map = {"low": 33, "medium": 66, "high": 100, "auto": 50}
-                if fan_speed in speed_map:
-                    service_data["percentage"] = speed_map[fan_speed]
-
-            # Cover position
-            if domain == "cover" and action == "set_position" and position is not None:
-                service_data["position"] = max(0, min(100, position))
-
-            # Cover preset/favorite - try button.{name}_my_position first
-            if domain == "cover" and action == "preset":
-                cover_object_id = entity_id.split(".")[1]
-                my_position_btn = f"button.{cover_object_id}_my_position"
-
-                if hass.states.get(my_position_btn):
-                    await hass.services.async_call("button", "press", {"entity_id": my_position_btn}, blocking=True)
-                    controlled.append(friendly_name)
-                    _LOGGER.info("Device control: button.press %s for %s", my_position_btn, friendly_name)
-                    continue
-                else:
-                    # Fall back to set_cover_position
-                    state = hass.states.get(entity_id)
-                    preset_pos = state.attributes.get("preset_position") if state else None
-                    if preset_pos is None and state:
-                        preset_pos = state.attributes.get("favorite_position")
-                    service_data["position"] = preset_pos if preset_pos is not None else 50
-
-            await hass.services.async_call(domain, service, service_data, blocking=True)
-            controlled.append(friendly_name)
-            _LOGGER.info("Device control: %s.%s on %s (%s)", domain, service, friendly_name, entity_id)
-
+            await hass.services.async_call(domain, service, data, blocking=False)
+            _LOGGER.info("Device control: %s.%s on %s", domain, service, name)
+            return (name, None)
         except Exception as err:
-            _LOGGER.error("Error controlling device %s: %s", entity_id, err)
-            failed.append(f"{friendly_name} ({str(err)[:30]})")
+            _LOGGER.error("Error controlling device %s: %s", name, err)
+            return (name, err)
+
+    if service_calls:
+        results = await asyncio.gather(*[execute_call(call) for call in service_calls])
+        controlled = [name for name, err in results if err is None]
+        failed.extend([f"{name} ({str(err)[:30]})" for name, err in results if err is not None])
+    else:
+        controlled = []
+
+    service = last_service  # For response generation
 
     # Build response
     if controlled:

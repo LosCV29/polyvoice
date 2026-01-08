@@ -672,18 +672,27 @@ class LMStudioConversationEntity(ConversationEntity):
                 if tool_calls:
                     messages.append({"role": "assistant", "content": data.get("content", [])})
 
-                    # Execute tools
-                    tool_results = []
+                    # Execute tools in parallel
+                    unique_tool_calls = []
                     for tc in tool_calls:
                         tool_key = f"{tc['name']}:{tc.get('arguments', '')}"
-                        if tool_key in called_tools:
-                            continue
-                        called_tools.add(tool_key)
+                        if tool_key not in called_tools:
+                            called_tools.add(tool_key)
+                            unique_tool_calls.append(tc)
+                            _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
 
-                        _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
-                        result = await self._execute_tool(tc["name"], tc["arguments"], user_input)
-                        # If tool returned response_text, use it directly
-                        if isinstance(result, dict) and "response_text" in result:
+                    # Run all tool calls concurrently
+                    tool_tasks = [
+                        self._execute_tool(tc["name"], tc["arguments"], user_input)
+                        for tc in unique_tool_calls
+                    ]
+                    results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+                    tool_results = []
+                    for tc, result in zip(unique_tool_calls, results):
+                        if isinstance(result, Exception):
+                            content = json.dumps({"error": str(result)})
+                        elif isinstance(result, dict) and "response_text" in result:
                             content = result["response_text"]
                         else:
                             content = json.dumps(result)
@@ -782,17 +791,27 @@ class LMStudioConversationEntity(ConversationEntity):
                 if tool_calls:
                     contents.append({"role": "model", "parts": parts})
 
-                    function_responses = []
+                    # Execute tools in parallel
+                    unique_tool_calls = []
                     for tc in tool_calls:
                         tool_key = f"{tc['name']}:{tc.get('arguments', '')}"
-                        if tool_key in called_tools:
-                            continue
-                        called_tools.add(tool_key)
+                        if tool_key not in called_tools:
+                            called_tools.add(tool_key)
+                            unique_tool_calls.append(tc)
+                            _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
 
-                        _LOGGER.info("Tool call: %s(%s)", tc["name"], tc["arguments"])
-                        result = await self._execute_tool(tc["name"], tc["arguments"], user_input)
-                        # If tool returned response_text, use it directly
-                        if isinstance(result, dict) and "response_text" in result:
+                    # Run all tool calls concurrently
+                    tool_tasks = [
+                        self._execute_tool(tc["name"], tc["arguments"], user_input)
+                        for tc in unique_tool_calls
+                    ]
+                    results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+                    function_responses = []
+                    for tc, result in zip(unique_tool_calls, results):
+                        if isinstance(result, Exception):
+                            response_content = {"error": str(result)}
+                        elif isinstance(result, dict) and "response_text" in result:
                             response_content = {"text": result["response_text"]}
                         else:
                             response_content = result
