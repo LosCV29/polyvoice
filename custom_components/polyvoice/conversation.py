@@ -44,9 +44,7 @@ from .const import (
     CONF_ENABLE_THERMOSTAT,
     CONF_ENABLE_WEATHER,
     CONF_ENABLE_WIKIPEDIA,
-    CONF_EXCLUDED_INTENTS,
     CONF_GOOGLE_PLACES_API_KEY,
-    CONF_LLM_CONTROLLED_ENTITIES,
     CONF_MAX_TOKENS,
     CONF_MODEL,
     CONF_NEWSAPI_KEY,
@@ -75,8 +73,6 @@ from .const import (
     DEFAULT_ENABLE_THERMOSTAT,
     DEFAULT_ENABLE_WEATHER,
     DEFAULT_ENABLE_WIKIPEDIA,
-    DEFAULT_EXCLUDED_INTENTS,
-    DEFAULT_LLM_CONTROLLED_ENTITIES,
     DEFAULT_PROVIDER,
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_SYSTEM_PROMPT,
@@ -118,8 +114,6 @@ from .tools.music import MusicController
 from .tools import timer as timer_tool
 from .tools import lists as lists_tool
 from .tools import reminders as reminders_tool
-
-from .intent_handler import register_intent_handlers, restore_intent_handlers
 
 if TYPE_CHECKING:
     import aiohttp
@@ -178,9 +172,6 @@ class LMStudioConversationEntity(ConversationEntity):
         # Music controller (initialized after config)
         self._music_controller: MusicController | None = None
 
-        # Intent handler tracking
-        self._original_intent_handlers: dict[str, intent.IntentHandler | None] = {}
-
         # Current query for tool context
         self._current_user_query: str = ""
 
@@ -221,7 +212,6 @@ class LMStudioConversationEntity(ConversationEntity):
 
         # Conversation features
         self._attr_supported_features = conversation.ConversationEntityFeature.CONTROL
-        self.excluded_intents = set(config.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS))
         self.system_prompt = config.get(CONF_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT)
 
         # Custom location
@@ -262,7 +252,6 @@ class LMStudioConversationEntity(ConversationEntity):
         self.thermostat_entity = config.get(CONF_THERMOSTAT_ENTITY, "")
         self.calendar_entities = parse_list_config(config.get(CONF_CALENDAR_ENTITIES, ""))
         self.camera_entities = parse_list_config(config.get(CONF_CAMERA_ENTITIES, ""))
-        self.llm_controlled_entities = set(parse_list_config(config.get(CONF_LLM_CONTROLLED_ENTITIES, DEFAULT_LLM_CONTROLLED_ENTITIES)))
         self.device_aliases = parse_entity_config(config.get(CONF_DEVICE_ALIASES, ""))
 
         # Thermostat settings
@@ -329,26 +318,10 @@ class LMStudioConversationEntity(ConversationEntity):
         if self.enable_music and self.room_player_mapping:
             self._music_controller = MusicController(self.hass, self.room_player_mapping)
 
-        # Register intent handlers for excluded intents AND/OR Smart Devices
-        if self.excluded_intents or self.llm_controlled_entities:
-            self._original_intent_handlers = register_intent_handlers(
-                self.hass,
-                self.entity_id,
-                self.excluded_intents,
-                self.llm_controlled_entities,
-                self.device_aliases,
-            )
-
         # Listen for config updates
         self.entry.async_on_unload(
             self.entry.add_update_listener(self._async_config_updated)
         )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity is removed from hass."""
-        if self._original_intent_handlers:
-            restore_intent_handlers(self.hass, self._original_intent_handlers)
-            self._original_intent_handlers.clear()
 
     @staticmethod
     async def _async_config_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

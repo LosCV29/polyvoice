@@ -156,7 +156,6 @@ CONF_CALENDAR_ENTITIES: Final = "calendar_entities"
 CONF_ROOM_PLAYER_MAPPING: Final = "room_player_mapping"
 CONF_DEVICE_ALIASES: Final = "device_aliases"
 CONF_CAMERA_ENTITIES: Final = "camera_entities"
-CONF_LLM_CONTROLLED_ENTITIES: Final = "llm_controlled_entities"
 
 # Thermostat settings - user-configurable temperature range and step
 CONF_THERMOSTAT_MIN_TEMP: Final = "thermostat_min_temp"
@@ -216,7 +215,6 @@ DEFAULT_CALENDAR_ENTITIES: Final = ""
 DEFAULT_ROOM_PLAYER_MAPPING: Final = ""  # room:entity_id, one per line
 DEFAULT_DEVICE_ALIASES: Final = ""
 DEFAULT_CAMERA_ENTITIES: Final = ""
-DEFAULT_LLM_CONTROLLED_ENTITIES: Final = ""  # Entities to route to LLM instead of native intents
 
 # Thermostat defaults (Fahrenheit by default)
 DEFAULT_THERMOSTAT_MIN_TEMP: Final = 60
@@ -228,70 +226,6 @@ DEFAULT_THERMOSTAT_USE_CELSIUS: Final = False
 DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS: Final = 15
 DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS: Final = 30
 DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS: Final = 1
-
-# =============================================================================
-# NATIVE INTENTS (with LLM fallback)
-# =============================================================================
-CONF_EXCLUDED_INTENTS: Final = "excluded_intents"
-
-DEFAULT_EXCLUDED_INTENTS: Final = [
-    "HassGetState",           # Use check_device_status for richer responses
-    "HassNevermind",          # Let LLM handle conversationally
-    "HassClimateGetTemperature",  # Use control_thermostat
-    "HassClimateSetTemperature",  # Use control_thermostat
-    "HassTimerStatus",        # Let LLM handle
-    "HassSetPosition",        # Use control_device for blinds/covers
-    "HassOpenCover",          # Use control_device - LLM handles fuzzy matching better
-    "HassCloseCover",         # Use control_device - LLM handles fuzzy matching better
-]
-
-# Complete list of Home Assistant native intents (alphabetically sorted)
-ALL_NATIVE_INTENTS: Final = [
-    "HassBroadcast",
-    "HassCancelAllTimers",
-    "HassCancelTimer",
-    "HassClimateGetTemperature",
-    "HassClimateSetTemperature",
-    "HassCloseCover",
-    "HassDecreaseTimer",
-    "HassFanSetSpeed",
-    "HassGetCurrentDate",
-    "HassGetCurrentTime",
-    "HassGetState",
-    "HassGetWeather",
-    "HassHumidifierMode",
-    "HassHumidifierSetpoint",
-    "HassIncreaseTimer",
-    "HassLawnMowerDock",
-    "HassLawnMowerStartMowing",
-    "HassLightSet",
-    "HassListAddItem",
-    "HassListCompleteItem",
-    "HassMediaNext",
-    "HassMediaPause",
-    "HassMediaPlayerMute",
-    "HassMediaPlayerUnmute",
-    "HassMediaPrevious",
-    "HassMediaSearchAndPlay",
-    "HassMediaUnpause",
-    "HassNevermind",
-    "HassOpenCover",
-    "HassPauseTimer",
-    "HassRespond",
-    "HassSetPosition",
-    "HassSetVolume",
-    "HassSetVolumeRelative",
-    "HassShoppingListAddItem",
-    "HassShoppingListCompleteItem",
-    "HassStartTimer",
-    "HassTimerStatus",
-    "HassToggle",
-    "HassTurnOff",
-    "HassTurnOn",
-    "HassUnpauseTimer",
-    "HassVacuumReturnToBase",
-    "HassVacuumStart",
-]
 
 # =============================================================================
 # SYSTEM PROMPT
@@ -320,8 +254,8 @@ GENERAL GUIDELINES:
 - For restaurant recommendations, use get_restaurant_recommendations
 - For news, use get_news
 - For calendar events, use get_calendar_events
-- For music control (play, skip, pause, etc.), let native Home Assistant handle it
-- For native HA control (lights, locks), let native HA Assist handle those
+- For music control (play, skip, pause, etc.), use control_music
+- For ALL device control (lights, locks, switches, fans, etc.), use control_device - ALL commands go through the LLM pipeline
 """
 
 # =============================================================================

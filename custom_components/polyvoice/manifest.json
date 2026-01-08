@@ -1,6 +1,6 @@
 {
   "domain": "polyvoice",
-  "name": "PolyVoice",
+  "name": "PolyVoice LLM",
   "codeowners": ["@LosCV29"],
   "config_flow": true,
   "dependencies": ["conversation"],
@@ -8,5 +8,5 @@
   "issue_tracker": "https://github.com/LosCV29/polyvoice/issues",
   "iot_class": "cloud_polling",
   "requirements": ["openai>=1.0.0"],
-  "version": "3.5.6"
+  "version": "4.0.0"
 }

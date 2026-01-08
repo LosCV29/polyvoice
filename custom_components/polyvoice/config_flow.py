@@ -43,8 +43,7 @@ from .const import (
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TOP_P,
-    # Native intents
-    CONF_EXCLUDED_INTENTS,
+    # System settings
     CONF_SYSTEM_PROMPT,
     CONF_CUSTOM_LATITUDE,
     CONF_CUSTOM_LONGITUDE,
@@ -71,14 +70,12 @@ from .const import (
     CONF_ROOM_PLAYER_MAPPING,
     CONF_DEVICE_ALIASES,
     CONF_CAMERA_ENTITIES,
-    CONF_LLM_CONTROLLED_ENTITIES,
     # Thermostat settings
     CONF_THERMOSTAT_MIN_TEMP,
     CONF_THERMOSTAT_MAX_TEMP,
     CONF_THERMOSTAT_TEMP_STEP,
     CONF_THERMOSTAT_USE_CELSIUS,
     # Defaults
-    DEFAULT_EXCLUDED_INTENTS,
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_LATITUDE,
     DEFAULT_CUSTOM_LONGITUDE,
@@ -103,7 +100,6 @@ from .const import (
     DEFAULT_ROOM_PLAYER_MAPPING,
     DEFAULT_DEVICE_ALIASES,
     DEFAULT_CAMERA_ENTITIES,
-    DEFAULT_LLM_CONTROLLED_ENTITIES,
     # Thermostat defaults
     DEFAULT_THERMOSTAT_MIN_TEMP,
     DEFAULT_THERMOSTAT_MAX_TEMP,
@@ -112,7 +108,6 @@ from .const import (
     DEFAULT_THERMOSTAT_MIN_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_MAX_TEMP_CELSIUS,
     DEFAULT_THERMOSTAT_TEMP_STEP_CELSIUS,
-    ALL_NATIVE_INTENTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -432,11 +427,10 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
                 "model": "Model Settings",
                 "features": "Enable/Disable Features",
                 "entities": "PolyVoice Default Entities",
-                "smart_devices": "Smart Devices",
+                "device_aliases": "Device Aliases",
                 "music_rooms": "Music Room Mapping",
                 "api_keys": "API Keys",
                 "location": "Location Settings",
-                "intents": "Excluded Intents",
                 "advanced": "System Prompt",
             },
         )
@@ -795,172 +789,38 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_smart_devices(
+    async def async_step_device_aliases(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle unified smart device configuration with aliases.
+        """Handle device aliases configuration.
 
-        Combines LLM-controlled devices and device aliases into one UI.
-        Users select entities for smart/LLM control and add voice aliases.
+        Device aliases allow users to define custom voice names for entities.
+        Format: alias_name: entity_id (one per line)
         """
+        if user_input is not None:
+            new_options = {**self._entry.options, **user_input}
+            return self.async_create_entry(title="", data=new_options)
+
         current = {**self._entry.data, **self._entry.options}
 
-        # Parse current LLM-controlled entities
-        current_llm = current.get(CONF_LLM_CONTROLLED_ENTITIES, "")
-        if isinstance(current_llm, str) and current_llm:
-            llm_entities = set(e.strip() for e in current_llm.split("\n") if e.strip())
-        else:
-            llm_entities = set()
-
-        # Parse current aliases into dict {alias_name: entity_id}
-        current_aliases = current.get(CONF_DEVICE_ALIASES, "")
-        aliases_dict = {}
-        if current_aliases:
-            for line in current_aliases.split("\n"):
-                line = line.strip()
-                if ": " in line:
-                    alias_name, entity_id = line.split(": ", 1)
-                    aliases_dict[alias_name.strip()] = entity_id.strip()
-
-        # Build reverse lookup: entity_id -> list of aliases
-        entity_aliases: dict[str, list[str]] = {}
-        for alias, eid in aliases_dict.items():
-            if eid not in entity_aliases:
-                entity_aliases[eid] = []
-            entity_aliases[eid].append(alias)
-
-        if user_input is not None:
-            action = user_input.get("action", "add_device")
-            selected_device = user_input.get("select_device", "")
-            selected_alias = user_input.get("select_alias", "")
-            new_entity = user_input.get("new_entity", "")
-            new_alias = user_input.get("new_alias", "").strip()
-
-            if action == "add_device" and new_entity:
-                # Add new entity to LLM-controlled list
-                llm_entities.add(new_entity)
-                # If alias provided, add it too
-                if new_alias:
-                    aliases_dict[new_alias] = new_entity
-
-            elif action == "add_alias" and selected_device and new_alias:
-                # Add alias for existing smart device
-                aliases_dict[new_alias] = selected_device
-
-            elif action == "remove_device" and selected_device:
-                # Remove device from LLM control and all its aliases
-                llm_entities.discard(selected_device)
-                # Remove all aliases pointing to this entity
-                aliases_dict = {k: v for k, v in aliases_dict.items() if v != selected_device}
-
-            elif action == "remove_alias" and selected_alias:
-                # Remove just the selected alias
-                if selected_alias in aliases_dict:
-                    del aliases_dict[selected_alias]
-
-            elif not new_entity and not new_alias and not selected_device and not selected_alias:
-                # Empty submit - return to menu
-                return self.async_create_entry(title="", data=self._entry.options)
-
-            # Save updated configs
-            updated_llm = "\n".join(sorted(llm_entities)) if llm_entities else ""
-            updated_aliases = "\n".join([f"{k}: {v}" for k, v in aliases_dict.items()]) if aliases_dict else ""
-
-            new_options = {
-                **self._entry.options,
-                CONF_LLM_CONTROLLED_ENTITIES: updated_llm,
-                CONF_DEVICE_ALIASES: updated_aliases,
-            }
-            self.hass.config_entries.async_update_entry(self._entry, options=new_options)
-
-            # Rebuild for display
-            llm_entities = set(e.strip() for e in updated_llm.split("\n") if e.strip()) if updated_llm else set()
-            aliases_dict = {}
-            if updated_aliases:
-                for line in updated_aliases.split("\n"):
-                    line = line.strip()
-                    if ": " in line:
-                        alias_name, entity_id = line.split(": ", 1)
-                        aliases_dict[alias_name.strip()] = entity_id.strip()
-            entity_aliases = {}
-            for alias, eid in aliases_dict.items():
-                if eid not in entity_aliases:
-                    entity_aliases[eid] = []
-                entity_aliases[eid].append(alias)
-
-        # Build description - simple summary
-        device_count = len(llm_entities)
-        alias_count = len(aliases_dict)
-        if device_count or alias_count:
-            description = f"Configured: {device_count} device(s), {alias_count} alias(es)"
-        else:
-            description = "No smart devices configured. Add a device below."
-
-        # Build select options for devices - SHOW ALIASES IN THE LABEL
-        device_options = []
-        for eid in sorted(llm_entities):
-            state = self.hass.states.get(eid)
-            friendly = state.attributes.get("friendly_name", eid) if state else eid
-            aliases = entity_aliases.get(eid, [])
-            if aliases:
-                alias_str = ", ".join(f'"{a}"' for a in aliases)
-                label = f"{friendly} → {alias_str}"
-            else:
-                label = f"{friendly} (no aliases)"
-            device_options.append(selector.SelectOptionDict(value=eid, label=label))
-
-        # Build select options for existing aliases (for remove_alias)
-        alias_options = []
-        for alias_name, eid in sorted(aliases_dict.items()):
-            state = self.hass.states.get(eid)
-            friendly = state.attributes.get("friendly_name", eid) if state else eid
-            alias_options.append(selector.SelectOptionDict(value=alias_name, label=f'"{alias_name}" → {friendly}'))
-
-        # Build the schema dynamically based on what's available
-        schema_dict = {
-            vol.Optional("action", default="add_device"): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        selector.SelectOptionDict(value="add_device", label="➕ Add New Device"),
-                        selector.SelectOptionDict(value="add_alias", label="🏷️ Add Alias to Device"),
-                        selector.SelectOptionDict(value="remove_device", label="❌ Remove Device"),
-                        selector.SelectOptionDict(value="remove_alias", label="🗑️ Remove Alias"),
-                    ],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-        }
-
-        # Add device selector if we have devices
-        if device_options:
-            schema_dict[vol.Optional("select_device")] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=device_options,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
-
-        # Add alias selector if we have aliases
-        if alias_options:
-            schema_dict[vol.Optional("select_alias")] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=alias_options,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
-
-        # Always show entity picker and alias input
-        schema_dict[vol.Optional("new_entity")] = selector.EntitySelector(
-            selector.EntitySelectorConfig(multiple=False)
-        )
-        schema_dict[vol.Optional("new_alias")] = selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-        )
-
         return self.async_show_form(
-            step_id="smart_devices",
-            description_placeholders={"devices": description},
-            data_schema=vol.Schema(schema_dict),
+            step_id="device_aliases",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_DEVICE_ALIASES,
+                        default=current.get(CONF_DEVICE_ALIASES, DEFAULT_DEVICE_ALIASES),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                            multiline=True,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "format_hint": "Format: alias_name: entity_id (one per line). Example:\nkitchen light: light.kitchen_ceiling\nfront door: lock.front_door",
+            },
         )
 
     async def async_step_music_rooms(
@@ -1129,34 +989,6 @@ class LMStudioOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders={
                 "location_note": "Leave as 0 to use Home Assistant's configured location",
             },
-        )
-
-    async def async_step_intents(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle excluded intents configuration."""
-        if user_input is not None:
-            new_options = {**self._entry.options, **user_input}
-            return self.async_create_entry(title="", data=new_options)
-
-        current = {**self._entry.data, **self._entry.options}
-
-        return self.async_show_form(
-            step_id="intents",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_EXCLUDED_INTENTS,
-                        default=current.get(CONF_EXCLUDED_INTENTS, DEFAULT_EXCLUDED_INTENTS),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=ALL_NATIVE_INTENTS,
-                            multiple=True,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                }
-            ),
         )
 
     async def async_step_advanced(
