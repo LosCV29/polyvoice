@@ -1,6 +1,6 @@
 {
   "domain": "polyvoice",
-  "name": "PolyVoice LLM",
+  "name": "PureLLM",
   "codeowners": ["@LosCV29"],
   "config_flow": true,
   "dependencies": ["conversation"],
