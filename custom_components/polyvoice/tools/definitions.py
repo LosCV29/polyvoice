@@ -276,12 +276,12 @@ def build_tools(config: "ToolConfig") -> list[dict]:
     # ===== LISTS (always enabled) =====
     tools.append(_tool(
         "manage_list",
-        "Manage shopping lists and to-do lists. Use for: 'add milk to shopping list', 'what's on my list', 'complete eggs', 'clear the list', 'sort the list alphabetically'.",
+        "Manage shopping lists and to-do lists. Use for: 'add milk to shopping list', 'what's on my list', 'complete eggs', 'clear the list', 'sort the list', 'show completed items', 'sort my completed items'.",
         {
             "action": {
                 "type": "string",
                 "enum": ["add", "complete", "remove", "show", "clear", "sort", "list_all"],
-                "description": "'add' item, 'complete' (check off), 'remove' (delete), 'show' items (alphabetically), 'clear' all, 'sort' to alphabetize, 'list_all' available lists"
+                "description": "'add' item, 'complete' (check off), 'remove' (delete), 'show' items, 'clear' all, 'sort' to alphabetize, 'list_all' available lists"
             },
             "item": {
                 "type": "string",
@@ -290,6 +290,11 @@ def build_tools(config: "ToolConfig") -> list[dict]:
             "list_name": {
                 "type": "string",
                 "description": "Optional list name (defaults to shopping list)"
+            },
+            "status": {
+                "type": "string",
+                "enum": ["active", "completed"],
+                "description": "For 'show' or 'sort': 'active' (default) or 'completed' to view/sort checked-off items"
             }
         },
         ["action"]
