@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select LLM Provider",
+        "description": "Choose which AI provider to use",
+        "data": {
+          "provider": "LLM Provider"
+        }
+      },
+      "credentials": {
+        "title": "Configure {provider}",
+        "description": "Enter your API credentials. For Azure OpenAI, use format: https://{resource-name}.openai.azure.com. For Ollama, use http://localhost:11434/v1",
+        "data": {
+          "base_url": "API Base URL",
+          "api_key": "API Key",
+          "model": "Model (select or type custom)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the API. Check your URL and API key."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "connection": "Connection & Provider",
+          "model": "Model Settings",
+          "features": "Enable/Disable Features",
+          "entities": "PureLLM Default Entities",
+          "device_aliases": "Device Aliases",
+          "music_rooms": "Music Room Mapping",
+          "api_keys": "External API Keys",
+          "location": "Location Settings",
+          "advanced": "System Prompt"
+        }
+      },
+      "connection": {
+        "title": "Connection & Provider Settings",
+        "description": "Change LLM provider or API settings",
+        "data": {
+          "provider": "LLM Provider",
+          "base_url": "API Base URL",
+          "api_key": "API Key"
+        }
+      },
+      "model": {
+        "title": "Model Settings",
+        "description": "Select from common models or type a custom model name",
+        "data": {
+          "model": "Model",
+          "temperature": "Temperature (0.0 - 2.0)",
+          "max_tokens": "Max Tokens",
+          "top_p": "Top P (0.0 - 1.0)"
+        }
+      },
+      "features": {
+        "title": "Enable/Disable Features",
+        "description": "Toggle which features are available to the assistant",
+        "data": {
+          "enable_weather": "Weather (OpenWeatherMap)",
+          "enable_calendar": "Calendar Events",
+          "enable_cameras": "Camera Checks (requires HA Video Vision integration)",
+          "enable_sports": "Sports Scores & Schedules",
+          "enable_stocks": "Stock Prices",
+          "enable_news": "News Headlines",
+          "enable_places": "Find Nearby Places (Google Places)",
+          "enable_restaurants": "Restaurant Recommendations (Yelp)",
+          "enable_thermostat": "Thermostat Control",
+          "enable_device_status": "Device Status Checks",
+          "enable_wikipedia": "Wikipedia & Age Lookup",
+          "enable_music": "Music Control (Music Assistant)"
+        }
+      },
+      "entities": {
+        "title": "PureLLM Default Entities",
+        "description": "Configure which Home Assistant entities PureLLM uses for its LLM functions",
+        "data": {
+          "thermostat_entity": "Thermostat",
+          "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
+          "calendar_entities": "Calendars",
+          "camera_entities": "Cameras",
+          "thermostat_min_temp": "Thermostat Minimum Temperature",
+          "thermostat_max_temp": "Thermostat Maximum Temperature",
+          "thermostat_temp_step": "Temperature Adjustment Step"
+        }
+      },
+      "device_aliases": {
+        "title": "Device Aliases",
+        "description": "Define custom voice names for your devices. Format: alias_name: entity_id (one per line)",
+        "data": {
+          "device_aliases": "Device Aliases"
+        }
+      },
+      "music_rooms": {
+        "title": "Music Room Mapping",
+        "description": "{mappings}",
+        "data": {
+          "select_room": "",
+          "room_player": "Media Player",
+          "room_name": "Room Name (e.g., living room, kitchen)",
+          "action": "Action"
+        }
+      },
+      "api_keys": {
+        "title": "External API Keys",
+        "description": "API keys for external services (leave blank to disable that feature)",
+        "data": {
+          "openweathermap_api_key": "OpenWeatherMap API Key",
+          "google_places_api_key": "Google Places API Key",
+          "yelp_api_key": "Yelp API Key",
+          "newsapi_key": "TheNewsAPI Key"
+        }
+      },
+      "location": {
+        "title": "Location Settings",
+        "description": "Override Home Assistant's location (leave as 0 to use HA's configured location)",
+        "data": {
+          "custom_latitude": "Latitude (0 = use HA location)",
+          "custom_longitude": "Longitude (0 = use HA location)"
+        }
+      },
+      "advanced": {
+        "title": "System Prompt",
+        "data": {
+          "system_prompt": "System Prompt"
+        }
+      }
+    }
+  }
+}

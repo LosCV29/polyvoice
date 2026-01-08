@@ -1,0 +1,144 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select LLM Provider",
+        "description": "Choose which AI provider to use",
+        "data": {
+          "provider": "LLM Provider"
+        }
+      },
+      "credentials": {
+        "title": "Configure {provider}",
+        "description": "Enter your API credentials. For Azure OpenAI, use format: https://{resource-name}.openai.azure.com. For Ollama, use http://localhost:11434/v1",
+        "data": {
+          "base_url": "API Base URL",
+          "api_key": "API Key",
+          "model": "Model Name (or Azure deployment name)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the API. Check your URL and API key."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "connection": "Connection & Provider",
+          "model": "Model Settings",
+          "features": "Enable/Disable Features",
+          "entities": "PolyVoice Default Entities",
+          "aliases": "LLM Fallback Aliases",
+          "music_rooms": "Music Room Mapping",
+          "api_keys": "External API Keys",
+          "location": "Location Settings",
+          "intents": "Excluded Intents",
+          "advanced": "System Prompt"
+        }
+      },
+      "connection": {
+        "title": "Connection & Provider Settings",
+        "description": "Change LLM provider or API settings",
+        "data": {
+          "provider": "LLM Provider",
+          "base_url": "API Base URL",
+          "api_key": "API Key"
+        }
+      },
+      "model": {
+        "title": "Model Settings",
+        "data": {
+          "model": "Model Name",
+          "temperature": "Temperature (0.0 - 2.0)",
+          "max_tokens": "Max Tokens",
+          "top_p": "Top P (0.0 - 1.0)"
+        }
+      },
+      "features": {
+        "title": "Enable/Disable Features",
+        "description": "Toggle which features are available to the assistant",
+        "data": {
+          "enable_weather": "Weather (OpenWeatherMap)",
+          "enable_calendar": "Calendar Events",
+          "enable_cameras": "Camera Checks (requires HA Video Vision integration)",
+          "enable_sports": "Sports Scores & Schedules",
+          "enable_stocks": "Stock Prices",
+          "enable_news": "News Headlines",
+          "enable_places": "Find Nearby Places (Google Places)",
+          "enable_restaurants": "Restaurant Recommendations (Yelp)",
+          "enable_thermostat": "Thermostat Control",
+          "enable_device_status": "Device Status Checks",
+          "enable_wikipedia": "Wikipedia & Age Lookup",
+          "enable_music": "Music Control (Music Assistant)"
+        }
+      },
+      "entities": {
+        "title": "PolyVoice Default Entities",
+        "description": "Configure which Home Assistant entities PolyVoice uses for its LLM functions",
+        "data": {
+          "thermostat_entity": "Thermostat",
+          "thermostat_use_celsius": "Use Celsius (instead of Fahrenheit)",
+          "calendar_entities": "Calendars",
+          "camera_entities": "Cameras",
+          "thermostat_min_temp": "Thermostat Minimum Temperature",
+          "thermostat_max_temp": "Thermostat Maximum Temperature",
+          "thermostat_temp_step": "Temperature Adjustment Step"
+        }
+      },
+      "smart_devices": {
+        "title": "Smart Devices",
+        "description": "{devices}",
+        "data": {
+          "action": "Action",
+          "select_device": "Select Device",
+          "select_alias": "Select Alias",
+          "new_entity": "New Device",
+          "new_alias": "Voice Alias (what you'll say)"
+        }
+      },
+      "music_rooms": {
+        "title": "Music Room Mapping",
+        "description": "{mappings}",
+        "data": {
+          "select_room": "",
+          "room_player": "Media Player",
+          "room_name": "Room Name (e.g., living room, kitchen)",
+          "action": "Action"
+        }
+      },
+      "api_keys": {
+        "title": "External API Keys",
+        "description": "API keys for external services (leave blank to disable that feature)",
+        "data": {
+          "openweathermap_api_key": "OpenWeatherMap API Key",
+          "google_places_api_key": "Google Places API Key",
+          "yelp_api_key": "Yelp API Key",
+          "newsapi_key": "TheNewsAPI Key"
+        }
+      },
+      "location": {
+        "title": "Location Settings",
+        "description": "Override Home Assistant's location (leave as 0 to use HA's configured location)",
+        "data": {
+          "custom_latitude": "Latitude (0 = use HA location)",
+          "custom_longitude": "Longitude (0 = use HA location)"
+        }
+      },
+      "intents": {
+        "title": "Excluded Intents",
+        "description": "Select intents to skip HA native handling and use PolyVoice's LLM functions instead. Default excludes ensure thermostat, device status, and blinds use custom functions.",
+        "data": {
+          "excluded_intents": "Excluded Intents"
+        }
+      },
+      "advanced": {
+        "title": "System Prompt",
+        "data": {
+          "system_prompt": "System Prompt"
+        }
+      }
+    }
+  }
+}
