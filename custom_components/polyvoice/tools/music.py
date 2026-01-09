@@ -181,7 +181,6 @@ class MusicController:
             return {"error": f"Unknown room: {room}. Available: {', '.join(self._players.keys())}"}
 
         for player in target_players:
-            _LOGGER.info("Playing '%s' (%s) in %s - radio_mode=False", query, media_type, room)
             await self._hass.services.async_call(
                 "music_assistant", "play_media",
                 {"media_id": query, "media_type": media_type, "enqueue": "replace", "radio_mode": False},
@@ -195,20 +194,7 @@ class MusicController:
                     blocking=True
                 )
 
-        # Natural response - include name and room
-        shuffled = shuffle or media_type == "genre"
-        if shuffled:
-            speech = f"Now shuffling {query} in the {room}"
-        else:
-            speech = f"Now playing {query} in the {room}"
-
-        return {
-            "status": "ok",
-            "name": query,
-            "type": media_type,
-            "room": room,
-            "speech": speech
-        }
+        return {"status": "playing", "message": f"Playing {query} in the {room}"}
 
     async def _handle_pause(self, ctx: dict) -> dict:
         """Pause music."""
@@ -334,24 +320,17 @@ class MusicController:
         return {"status": "transferred", "message": f"Music transferred to {self._get_room_name(target)}"}
 
     async def _handle_shuffle(self, ctx: dict) -> dict:
-        """Shuffle by genre or artist - deterministic matching.
-
-        Search priority:
-        1. Playlist with exact name match
-        2. Playlist containing query in name
-        3. Artist exact match (play artist discography shuffled)
-        """
+        """Search and play shuffled playlist."""
         query = ctx["query"]
         room = ctx["room"]
         target_players = ctx["target_players"]
-        query_lower = query.lower().strip()
 
         if not query:
             return {"error": "No search query specified for shuffle"}
         if not target_players:
             return {"error": f"No room specified. Available: {', '.join(self._players.keys())}"}
 
-        _LOGGER.info("Shuffle search for: '%s'", query)
+        _LOGGER.info("Searching for playlist matching: %s", query)
 
         try:
             ma_entries = self._hass.config_entries.async_entries("music_assistant")
@@ -359,83 +338,56 @@ class MusicController:
                 return {"error": "Music Assistant integration not found"}
             ma_config_entry_id = ma_entries[0].entry_id
 
-            # Step 1: Search playlists
             search_result = await self._hass.services.async_call(
                 "music_assistant", "search",
-                {"config_entry_id": ma_config_entry_id, "name": query, "media_type": ["playlist"], "limit": 10},
+                {"config_entry_id": ma_config_entry_id, "name": query, "media_type": ["playlist"], "limit": 5},
                 blocking=True, return_response=True
             )
 
-            matched_name = None
-            matched_uri = None
+            playlist_name = None
+            playlist_uri = None
             media_type_to_use = "playlist"
 
-            # Parse playlist results
-            playlists = []
             if search_result:
+                playlists = []
                 if isinstance(search_result, dict):
-                    playlists = search_result.get("playlists", []) or search_result.get("items", [])
+                    playlists = search_result.get("playlists", [])
+                    if not playlists and "items" in search_result:
+                        playlists = search_result.get("items", [])
                 elif isinstance(search_result, list):
                     playlists = search_result
 
-            # Deterministic matching: exact > contains
-            if playlists:
-                for pl in playlists:
-                    pl_name = (pl.get("name") or pl.get("title", "")).lower()
-                    # Exact match - use immediately
-                    if pl_name == query_lower:
-                        matched_name = pl.get("name") or pl.get("title")
-                        matched_uri = pl.get("uri") or pl.get("media_id")
-                        _LOGGER.info("Exact playlist match: %s", matched_name)
-                        break
-                    # Contains match - take first one found
-                    if query_lower in pl_name and not matched_uri:
-                        matched_name = pl.get("name") or pl.get("title")
-                        matched_uri = pl.get("uri") or pl.get("media_id")
-                        _LOGGER.info("Playlist contains match: %s", matched_name)
+                if playlists:
+                    first_playlist = playlists[0]
+                    playlist_name = first_playlist.get("name") or first_playlist.get("title", "Unknown Playlist")
+                    playlist_uri = first_playlist.get("uri") or first_playlist.get("media_id")
 
-            # Step 2: Fall back to artist if no playlist
-            if not matched_uri:
-                _LOGGER.info("No playlist match, searching artist: %s", query)
+            # Fall back to artist search
+            if not playlist_uri:
+                _LOGGER.info("No playlist found, searching for artist: %s", query)
                 artist_result = await self._hass.services.async_call(
                     "music_assistant", "search",
-                    {"config_entry_id": ma_config_entry_id, "name": query, "media_type": ["artist"], "limit": 5},
+                    {"config_entry_id": ma_config_entry_id, "name": query, "media_type": ["artist"], "limit": 1},
                     blocking=True, return_response=True
                 )
-
-                artists = []
                 if artist_result:
+                    artists = []
                     if isinstance(artist_result, dict):
                         artists = artist_result.get("artists", [])
                     elif isinstance(artist_result, list):
                         artists = artist_result
+                    if artists:
+                        playlist_name = artists[0].get("name", query)
+                        playlist_uri = artists[0].get("uri") or artists[0].get("media_id")
+                        media_type_to_use = "artist"
 
-                # Deterministic: exact > contains
-                if artists:
-                    for artist in artists:
-                        artist_name = (artist.get("name", "")).lower()
-                        if artist_name == query_lower:
-                            matched_name = artist.get("name")
-                            matched_uri = artist.get("uri") or artist.get("media_id")
-                            media_type_to_use = "artist"
-                            _LOGGER.info("Exact artist match: %s", matched_name)
-                            break
-                        if query_lower in artist_name and not matched_uri:
-                            matched_name = artist.get("name")
-                            matched_uri = artist.get("uri") or artist.get("media_id")
-                            media_type_to_use = "artist"
-                            _LOGGER.info("Artist contains match: %s", matched_name)
+            if not playlist_uri:
+                return {"error": f"Could not find playlist or artist matching '{query}'"}
 
-            if not matched_uri:
-                return {"error": f"No playlist or artist found matching '{query}'"}
-
-            # Play and shuffle
             player = target_players[0]
-            _LOGGER.info("Playing %s (%s) shuffled in %s", matched_name, media_type_to_use, room)
-
             await self._hass.services.async_call(
                 "music_assistant", "play_media",
-                {"media_id": matched_uri, "media_type": media_type_to_use, "enqueue": "replace", "radio_mode": False},
+                {"media_id": playlist_uri, "media_type": media_type_to_use, "enqueue": "replace", "radio_mode": False},
                 target={"entity_id": player},
                 blocking=True
             )
@@ -446,15 +398,13 @@ class MusicController:
                 blocking=True
             )
 
-            # Natural response - include playlist name and room
             return {
-                "status": "ok",
-                "name": matched_name,
-                "type": media_type_to_use,
+                "status": "shuffling",
+                "playlist_name": playlist_name,
                 "room": room,
-                "speech": f"Now shuffling {matched_name} in the {room}"
+                "message": f"Shuffling {playlist_name} in the {room}"
             }
 
         except Exception as search_err:
-            _LOGGER.error("Shuffle error: %s", search_err, exc_info=True)
-            return {"error": f"Shuffle failed: {str(search_err)}"}
+            _LOGGER.error("Shuffle search/play error: %s", search_err, exc_info=True)
+            return {"error": f"Failed to find or play playlist: {str(search_err)}"}
